@@ -1,6 +1,6 @@
 # Architecture Decision Record
 
-Load-bearing decisions in the order-processing system. Each entry states the context, the decision, **the alternatives that were rejected and why**, the consequences we accepted, and the evidence behind it. Plan references are to [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md).
+Load-bearing decisions in the order-processing system. Each entry states the context, the decision, **the alternatives that were rejected and why**, the consequences we accepted, and the evidence behind it.
 
 | ADR | Decision | One-line rationale |
 |---|---|---|

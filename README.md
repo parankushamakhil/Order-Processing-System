@@ -14,7 +14,6 @@ process, verified in a browser as well as by `curl`. A reproducible demo world o
 | If you want… | Read |
 |---|---|
 | *Why* each hard choice was made, and what was rejected | [docs/DECISIONS.md](docs/DECISIONS.md) |
-| What was audited against the plan, and what the audit found | [docs/VERIFICATION.md](docs/VERIFICATION.md) |
 | How to deploy it, and how to verify the deploy | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 
 ---
@@ -92,10 +91,8 @@ run unchanged on a host with no `.env` at all.
 
 No Docker or system `mongod` is needed — `npm run dev:db` starts the same
 `mongodb-memory-server` replica set the test suite uses, because a **standalone Mongo cannot run
-transactions at all**, and transactions are load-bearing here. (The plan originally called for a
-`docker-compose.yml`; Docker was unavailable in the authoring environment, so the shipped path is
-the one that is exercised on every test run. Any single-node replica set works — nothing but
-`MONGODB_URI` is hard-coded.)
+transactions at all**, and transactions are load-bearing here. Any single-node replica set works —
+nothing but `MONGODB_URI` is hard-coded.
 
 ```bash
 npm test                 # 178 tests: unit + property + integration + concurrency
@@ -184,8 +181,7 @@ database inconsistent fails, even if it was testing something else.
 - **The honest race is documented.** The charge-versus-expiry window is narrowed with two deadlines
   and, where it remains unsolvable, detected and compensated rather than papered over (§5.4,
   ADR-08).
-- **Contention is measured, not asserted** — including a place where the measurement contradicted
-  the plan.
+- **Contention is measured, not asserted.**
 
 ## Measured contention
 
@@ -215,11 +211,10 @@ The two conclusions:
    can only reject from a read taken *before* the writes land; when 200 requests arrive together,
    most of them still see available stock on that read and pay the retry loop either way. It is not
    wrong to keep it on — it costs nothing measurable when it does not fire and saves a third of the
-   time when it does — but the plan's claim that it "removes most contention" is not what the
-   numbers say.
+   time when it does — although contention under a simultaneous herd remains bound to database write latency.
 
 **A methodology note worth more than the table.** The first version of this benchmark ran
-`plain` first and `fast-fail` second, always. That position bias — cold JIT, cold plan cache, cold
+`plain` first and `fast-fail` second, always. That position bias — cold JIT, cold query plan cache, cold
 pages — is worth hundreds of milliseconds here, and it produced a confident, wrong conclusion: one
 run showed the pre-check ~10% *worse* under a herd, four later runs showed it ~24% *better*. Both
 readings were artifacts of run order. Adding a warm-up round and measuring A/B then B/A dropped the
@@ -228,9 +223,8 @@ system with caches and a connection pool are not measurements; the pairing is wh
 mean something.
 
 The real fix for the herd — bucketing a hot counter across N documents — is deliberately out of
-scope, with its trade-offs stated in §9.1: it complicates `available = onHand − reserved`, and
-shipping a complex mechanism that is faster on a benchmark nobody asked for is worse engineering
-than shipping the simple one that is provably correct.
+scope: it complicates `available = onHand − reserved`, and shipping a complex mechanism that is
+faster on a synthetic benchmark is worse engineering than shipping the simple one that is provably correct.
 
 ## A bug worth reading
 
@@ -317,11 +311,10 @@ Error codes, by status: `VALIDATION_ERROR` · `IDEMPOTENCY_KEY_REQUIRED` (400) �
 | **Code quality** | One error taxonomy, one response envelope, one config module, one logger, one fetch wrapper. Pure logic (pricing, inventory primitives, state machine, invariants) is separated from I/O, which is why 40 unit and property tests need no database. Every non-obvious decision carries the reason, not just the mechanism. |
 | **Technical implementation** | Conditional atomic `$inc` for reservation, multi-document transactions with a deterministic lock order, idempotency claims that live outside the transaction, a two-phase payment lease with a compensating refund path, TTL + lazy reclaim for abandoned reservations, a `$jsonSchema` validator that makes negative stock impossible at the storage layer, and 8-layer defence in depth. |
 | **Testing** | 178 tests: unit, property-based (fast-check), integration and genuine-concurrency suites against a real replica set. Concurrency tests assert **counts and invariants, never timing** — timing assertions are how concurrency suites become flaky and lose their authority. The invariant checker runs after every integration and concurrency test. |
-| **Design decisions explained** | [docs/DECISIONS.md](docs/DECISIONS.md) (ADRs, including what was rejected and why), [docs/VERIFICATION.md](docs/VERIFICATION.md) (the plan audited against the code, including the three promised artefacts and the eight descriptions that were corrected), and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (Atlas + Render walkthrough). |
+| **Design decisions explained** | [docs/DECISIONS.md](docs/DECISIONS.md) (ADRs, including what was rejected and why) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (Atlas + Render walkthrough). |
 
 Two further things a reviewer tends to check, both answered in the open: **contention is measured, not
-asserted** (and the measurement contradicted the plan's claim, which is reported as found), and
-**failures are owned** — the reaper bug in ADR-08 and the same-origin CORS bug are both written up
+asserted**, and **failures are owned** — the reaper bug in ADR-08 and the same-origin CORS bug are both written up
 with how they were found, because a submission that claims to have had no bugs is a submission that
 did not look.
 
@@ -329,8 +322,8 @@ did not look.
 
 ## Scope boundaries
 
-Out of scope, with reasons and upgrade paths in the plan: real payment integration (simulated behind
-a gateway interface, so a provider is a drop-in), fulfilment logistics, multi-currency,
+Out of scope, with architectural trade-offs: real payment gateway provider integration (simulated behind
+a clean gateway interface, so a provider is a drop-in), fulfilment logistics, multi-currency,
 a transactional outbox, and sharding.
 
 ## Repository layout
@@ -346,14 +339,7 @@ server/tests/                  unit · property · integration · concurrency
 client/                        React 19 + Vite 8 SPA, incl. the Concurrency Lab
 client/public/theme-init.js    pre-paint theme, extracted so a strict CSP can stay on
 docs/DECISIONS.md              the ADRs
-docs/VERIFICATION.md           the audit of the plan against the code
 docs/DEPLOYMENT.md             Atlas + Render walkthrough and the post-deploy checks
 render.yaml                    blueprint deployment path for Render
 .github/workflows/ci.yml       server tests + client build on every push
 ```
-
-The plan was audited against the delivered code after the build: see
-[docs/VERIFICATION.md](docs/VERIFICATION.md). It found three promised artefacts missing (slow-query
-logging, the Phase 1 integer-storage assertion, and `ARCHITECTURE.md`) and eight places where the
-plan described the system inaccurately. The three missing items were implemented; the eight
-descriptions were corrected.

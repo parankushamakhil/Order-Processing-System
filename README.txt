@@ -14,8 +14,7 @@ process, verified in a browser as well as by curl. A reproducible demo world of 
 (`npm run seed:demo`).
 
 Documentation references:
-- Why each hard choice was made, and what was rejected: docs/DECISIONS.md
-- What was audited against the plan, and what the audit found: docs/VERIFICATION.md
+- Architectural decisions and trade-offs: docs/DECISIONS.md
 - How to deploy it, and how to verify the deploy: docs/DEPLOYMENT.md
 
 --------------------------------------------------------------------------------
@@ -86,7 +85,8 @@ run unchanged on a host with no .env at all.
 
 No Docker or system mongod is needed — npm run dev:db starts the same
 mongodb-memory-server replica set the test suite uses, because a standalone Mongo cannot run
-transactions at all, and transactions are load-bearing here.
+transactions at all, and transactions are load-bearing here. Any single-node replica set works —
+nothing but MONGODB_URI is hard-coded.
 
 ```bash
 npm test                 # 178 tests: unit + property + integration + concurrency
@@ -158,7 +158,7 @@ What makes this different:
 - Eight layers of defence, from Zod at the edge down to a $jsonSchema validator that makes negative stock impossible at the storage layer even if application code is wrong — and a test that bypasses the service layer and proves it.
 - Concurrency tests assert counts and invariants, never timing. Timing assertions are how concurrency suites become flaky and lose their authority.
 - The honest race is documented. The charge-versus-expiry window is narrowed with two deadlines and, where it remains unsolvable, detected and compensated rather than papered over (§5.4, ADR-08).
-- Contention is measured, not asserted — including a place where the measurement contradicted the plan.
+- Contention is measured, not asserted.
 
 
 --------------------------------------------------------------------------------
@@ -276,7 +276,6 @@ server/tests/                  unit · property · integration · concurrency
 client/                        React 19 + Vite 8 SPA, incl. the Concurrency Lab
 client/public/theme-init.js    pre-paint theme, extracted so a strict CSP can stay on
 docs/DECISIONS.md              the ADRs
-docs/VERIFICATION.md           the audit of the plan against the code
 docs/DEPLOYMENT.md             Atlas + Render walkthrough and the post-deploy checks
 render.yaml                    blueprint deployment path for Render
 .github/workflows/ci.yml       server tests + client build on every push

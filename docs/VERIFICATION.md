@@ -1,6 +1,6 @@
 # Verification against the implementation plan
 
-An audit of every checkable claim in [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) against the
+An audit of every checkable claim against the
 delivered code, performed after the build. It found **three unimplemented deliverables** and
 **eight descriptions that did not match what was built**. Everything in the first group was
 implemented; everything in the second was corrected in the plan.
@@ -64,7 +64,7 @@ Implemented in both places it is useful:
 ### 1c. `ARCHITECTURE.md` (Phase 10) — was missing
 
 Phase 10's deliverable list names it. Written as
-[ARCHITECTURE.md](../ARCHITECTURE.md): the process/module map, the three runtime flows, and a
+architecture documentation: the process/module map, the three runtime flows, and a
 **guarantee → where it is enforced → which test proves it** table, which is deliberately distinct
 from the README (how to run it) and the plan (why it was built this way).
 
