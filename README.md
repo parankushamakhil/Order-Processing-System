@@ -80,7 +80,7 @@ demonstration — real accounts never do:
 ```bash
 npm install
 npm run dev:db       # local single-node replica set; writes server/.dev-mongo-uri
-npm run seed:demo    # 160 products, 610 orders, 487 payments, 421 claims
+npm run seed:demo    # 205 products, 620 orders, 487 payments, 424 claims
 npm run dev          # API :4000 + client :5173
 ```
 
