@@ -1,0 +1,16 @@
+/**
+ * Stylesheet entry point.
+ *
+ * Order matters and is the whole cascade strategy:
+ *   1. tokens      — custom properties; the only place a raw value is allowed
+ *   2. base        — reset, document defaults, utilities
+ *   3. components  — reusable UI, styled only from tokens
+ *   4. pages       — shell and view-specific layout
+ *
+ * No component reaches past its layer, and nothing below layer 1 hard-codes a
+ * colour, radius or duration.
+ */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/components.css';
+@import './styles/pages.css';

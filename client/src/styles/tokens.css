@@ -1,0 +1,227 @@
+/* ============================================================================
+   Design tokens
+   ----------------------------------------------------------------------------
+   One source of truth for colour, type, space, radius and elevation. Components
+   never hard-code a hex value; themes only ever restate tokens.
+
+   The palette is deliberately restrained: neutral surfaces, hairline borders and
+   a single blue accent. No gradients on surfaces, no glass, no glow — the sort
+   of restraint that reads as "built by a team with a design system" rather than
+   decorated for a screenshot.
+   ========================================================================= */
+
+:root {
+  /* --- type --- */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+
+  --lh-tight: 1.25;
+  --lh-snug: 1.4;
+  --lh-normal: 1.55;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* --- space (4px rhythm) --- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* --- radius --- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 999px;
+
+  /* --- layout --- */
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
+  --content-max: 1240px;
+
+  /* --- motion --- */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 110ms;
+  --dur: 160ms;
+  --dur-slow: 260ms;
+
+  /* --- z-index scale --- */
+  --z-sticky: 20;
+  --z-topbar: 30;
+  --z-drawer: 60;
+  --z-modal: 70;
+  --z-toast: 90;
+}
+
+/* ---------------------------------------------------------------------------
+   Light theme — the default. A commerce console is read in daylight on a
+   laptop; dark mode is the option, not the assumption.
+   ------------------------------------------------------------------------- */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --app-bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --surface-3: #eef0f4;
+  --surface-inset: #f3f5f8;
+
+  --border: #e4e7ec;
+  --border-strong: #d0d5dd;
+  --border-focus: #98a2b3;
+
+  --text: #101828;
+  --text-muted: #5a6474;
+  /* Deliberately darker than it looks like it needs to be: this token labels
+     11-12px meta text, where WCAG AA wants 4.5:1. Measured, not eyeballed —
+     the first version of this palette came in at 3.09:1 on white. */
+  --text-subtle: #667085;
+  --text-inverse: #ffffff;
+
+  --accent: #2258d6;
+  --accent-hover: #1c49b6;
+  --accent-active: #173d99;
+  --accent-text: #1c49b6;
+  --accent-soft: rgba(34, 88, 214, 0.08);
+  --accent-soft-strong: rgba(34, 88, 214, 0.14);
+  --accent-ring: rgba(34, 88, 214, 0.28);
+
+  --success: #0f7a52;
+  --success-soft: rgba(15, 122, 82, 0.1);
+  --success-border: rgba(15, 122, 82, 0.28);
+
+  --warning: #9a5b06;
+  --warning-soft: rgba(154, 91, 6, 0.1);
+  --warning-border: rgba(154, 91, 6, 0.3);
+
+  --danger: #c02b26;
+  --danger-hover: #a3231f;
+  --danger-soft: rgba(192, 43, 38, 0.09);
+  --danger-border: rgba(192, 43, 38, 0.28);
+
+  --info: #0f5f9c;
+  --info-soft: rgba(15, 95, 156, 0.09);
+  --info-border: rgba(15, 95, 156, 0.26);
+
+  --neutral-soft: #f1f3f6;
+  --neutral-border: #dfe3e9;
+
+  /* Elevation: layered and low-contrast. A 1px border does most of the work. */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 2px 4px -1px rgba(16, 24, 40, 0.06), 0 6px 16px -4px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 12px 32px -8px rgba(16, 24, 40, 0.18), 0 2px 8px -2px rgba(16, 24, 40, 0.08);
+
+  --skeleton-base: #eceef2;
+  --skeleton-sheen: #f6f7f9;
+
+  --scrollbar-thumb: #d3d8e0;
+  --overlay: rgba(16, 24, 40, 0.42);
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme — not an inversion. Surfaces lift toward the viewer, text sits
+   just below pure white, and the accent lightens so it keeps its contrast.
+   ------------------------------------------------------------------------- */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --app-bg: #0b0e14;
+  --surface: #12161e;
+  --surface-2: #171c25;
+  --surface-3: #1e242f;
+  --surface-inset: #0e1219;
+
+  --border: #242b36;
+  --border-strong: #333c4a;
+  --border-focus: #4a5568;
+
+  --text: #e8ebf0;
+  --text-muted: #9aa4b4;
+  /* Same reasoning as the light theme: 4.5:1 against the dark surface, not just
+     "looks dim enough". */
+  --text-subtle: #8b96a6;
+  --text-inverse: #0b0e14;
+
+  --accent: #6f9dff;
+  --accent-hover: #8bb0ff;
+  --accent-active: #a6c3ff;
+  --accent-text: #8bb0ff;
+  --accent-soft: rgba(111, 157, 255, 0.12);
+  --accent-soft-strong: rgba(111, 157, 255, 0.2);
+  --accent-ring: rgba(111, 157, 255, 0.35);
+
+  --success: #4ed39b;
+  --success-soft: rgba(78, 211, 155, 0.13);
+  --success-border: rgba(78, 211, 155, 0.3);
+
+  --warning: #e0ab5c;
+  --warning-soft: rgba(224, 171, 92, 0.13);
+  --warning-border: rgba(224, 171, 92, 0.3);
+
+  --danger: #ff8078;
+  --danger-hover: #ff9a93;
+  --danger-soft: rgba(255, 128, 120, 0.13);
+  --danger-border: rgba(255, 128, 120, 0.32);
+
+  --info: #79b8ff;
+  --info-soft: rgba(121, 184, 255, 0.13);
+  --info-border: rgba(121, 184, 255, 0.3);
+
+  --neutral-soft: #1c222c;
+  --neutral-border: #2b3341;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+
+  --skeleton-base: #1a2029;
+  --skeleton-sheen: #222a35;
+
+  --scrollbar-thumb: #333c4a;
+  --overlay: rgba(0, 0, 0, 0.6);
+}
+
+/* Solid accent fills need their own foreground per theme: a light blue fill with
+   white text fails contrast (white on #6f9dff measures 2.6:1), so dark mode flips
+   to near-black on accent.
+
+   These two rules MUST NOT both be written as `:root`-level selectors: `:root`
+   and `[data-theme='dark']` have equal specificity, so whichever comes last wins
+   in every theme. The first version of this file did exactly that and shipped
+   white-on-blue in dark mode — caught by a measured contrast audit, not by
+   looking at it. `html[data-theme='dark']` carries one extra element selector
+   and therefore wins on merit. */
+:root {
+  --on-accent: #ffffff;
+  --on-danger: #ffffff;
+}
+
+html[data-theme='dark'] {
+  --on-accent: #0a0d13;
+  --on-danger: #1a0f0e;
+}

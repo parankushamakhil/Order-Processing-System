@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A cancelled run should stop consuming a runner, and a superseded push does not
+# need to finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-tests:
+    name: Server tests (unit, property, integration, concurrency)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The suite starts its own MongoDB replica set via mongodb-memory-server —
+      # no service container is needed, and transactions work because the server
+      # is started with --replSet.
+      - name: Full test suite
+        run: npm run test --workspace server
+      # Run again, verbosely, for the concurrency files only: these are the tests
+      # the whole design exists to satisfy, so their output is worth reading in
+      # the CI log rather than only their pass/fail.
+      - name: Concurrency suite, verbose
+        run: npm run test:concurrency
+
+  client-build:
+    name: Client build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace client
+      - name: Check the build produced a servable SPA
+        run: |
+          test -f client/dist/index.html
+          test -f client/dist/theme-init.js
+          ls client/dist/assets/*.js client/dist/assets/*.css > /dev/null
+
+  production-boot:
+    name: Production boot smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Build the client
+        run: npm run build
+
+      # The image path and the native path both run this same command after these
+      # same steps, so this job is the closest CI can get to the deployed process.
+      - name: Start a local replica set
+        run: |
+          nohup node server/scripts/dev-mongo.mjs > /tmp/mongo.log 2>&1 &
+          for i in $(seq 1 90); do
+            [ -s server/.dev-mongo-uri ] && break
+            sleep 1
+          done
+          test -s server/.dev-mongo-uri || { cat /tmp/mongo.log; exit 1; }
+          cat server/.dev-mongo-uri
+
+      # The seeder exits non-zero if the data it just wrote violates I1-I7, so this
+      # step is both a fixture and an assertion.
+      - name: Seed demo data
+        run: |
+          export MONGODB_URI="$(sed 's|/?|/orders?|' server/.dev-mongo-uri)"
+          npm run seed:demo
+
+      - name: Boot in production mode
+        run: |
+          export MONGODB_URI="$(sed 's|/?|/orders?|' server/.dev-mongo-uri)"
+          export NODE_ENV=production PORT=4000 SERVE_CLIENT=true JWT_SECRET=ci-only-secret-not-for-use
+          nohup node server/src/server.js > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:4000/healthz > /dev/null && break
+            sleep 1
+          done
+          curl -s http://127.0.0.1:4000/healthz | head -c 200
+
+      - name: Assert the API and the SPA are both served from one origin
+        run: |
+          set -euo pipefail
+          BASE=http://127.0.0.1:4000
+
+          health=$(curl -s -o /dev/null -w '%{http_code}' $BASE/healthz)
+          echo "healthz: $health"; test "$health" = "200"
+
+          products=$(curl -s $BASE/api/products)
+          echo "products: $(echo "$products" | head -c 80)"
+          echo "$products" | grep -q '"items"'
+
+          index=$(curl -s -o /dev/null -w '%{http_code}' $BASE/)
+          echo "index: $index"; test "$index" = "200"
+
+          # The catch-all must not swallow API routes: an unknown API path has to
+          # return the JSON error envelope, not index.html.
+          notfound=$(curl -s $BASE/api/definitely-not-a-route)
+          echo "unknown api path: $notfound"
+          echo "$notfound" | grep -q '"error"'
+          if echo "$notfound" | grep -q 'id="root"'; then
+            echo "FAIL: the SPA fallback swallowed an API route"
+            exit 1
+          fi
+
+          # Load the SPA's own assets the way a BROWSER does. `curl` alone sent no
+          # Origin header here, so it cheerfully reported a healthy server while
+          # the browser received 403 for the application's stylesheet and script —
+          # the production build rendered nothing. Vite emits `crossorigin` on
+          # these tags, so a browser really does send Origin on same-origin
+          # requests, and this check is what keeps that regression gone.
+          asset=$(grep -o 'assets/[^"]*\.css' client/dist/index.html | head -1)
+          echo "asset under test: $asset"
+          asset_code=$(curl -s -o /dev/null -w '%{http_code}' -H "Origin: $BASE" "$BASE/$asset")
+          echo "asset with Origin: $asset_code"
+          test "$asset_code" = "200"
+
+          # ...and a genuine cross-origin caller is still refused.
+          foreign=$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://evil.example.test' $BASE/healthz)
+          echo "foreign origin: $foreign"
+          test "$foreign" = "403"
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: |
+            /tmp/api.log
+            /tmp/mongo.log

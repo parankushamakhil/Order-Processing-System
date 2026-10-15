@@ -1,0 +1,36 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Express 5 + Mongoose order processing API.",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "dev:db": "node scripts/dev-mongo.mjs",
+    "gate:replset": "node scripts/smoke-replset.mjs",
+    "seed": "node src/scripts/seed.js",
+    "seed:demo": "node src/scripts/seedDemo.js",
+    "apply-validators": "node src/scripts/applyValidators.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:concurrency": "vitest run tests/concurrency --reporter=verbose --no-file-parallelism",
+    "test:unit": "vitest run tests/unit tests/property",
+    "bench": "node scripts/bench.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^9.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2",
+    "mongodb-memory-server": "^11.0.0",
+    "supertest": "^7.1.0",
+    "vitest": "^5.0.0"
+  }
+}

@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Render blueprint — the deployment path that was verified natively.
+#
+# Render reads this file when you connect the repository, creates the service and
+# prompts for the values marked `sync: false` (the MongoDB URI, which belongs to
+# your Atlas account and must not live in Git).
+#
+# The build command does three things, in order, and each one matters:
+#
+#   npm ci --include=dev   Vite is a dev dependency; a bare `npm ci` with
+#                          NODE_ENV=production would skip it and the client build
+#                          would fail.
+#   npm run build          builds client/dist, which the API then serves.
+#   npm run seed:demo      loads the demonstration data. It REPLACES orders,
+#                          payments and claims on every deploy — which is what you
+#                          want for a demo and not what you want for a product.
+#                          Remove this step to keep data across deploys.
+#
+# MONGOMS_DISABLE_POSTINSTALL stops mongodb-memory-server (a test dependency)
+# from downloading a mongod binary during the build. Nothing at runtime uses it.
+# ---------------------------------------------------------------------------
+
+services:
+  - type: web
+    name: order-processing-system
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /healthz
+    buildCommand: npm ci --include=dev && npm run build && npm run seed:demo
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVE_CLIENT
+        value: 'true'
+      - key: LOG_LEVEL
+        value: info
+      - key: MONGOMS_DISABLE_POSTINSTALL
+        value: 'true'
+      # Set in the Render dashboard: your Atlas connection string, including the
+      # database name, e.g.
+      # mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/orders?retryWrites=true&w=majority
+      - key: MONGODB_URI
+        sync: false
+      # Generated once by Render and kept secret.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true

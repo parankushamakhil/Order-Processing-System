@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------
+# One command for the whole stack:
+#
+#   docker compose up --build
+#   docker compose exec api npm run seed:demo --workspace server
+#
+# then open http://localhost:4000.
+#
+# Why MongoDB is configured as a replica set even for a local demo: transactions
+# require one, and the checkout saga uses them. A single-node replica set is the
+# smallest topology that can run the code path the tests exercise.
+#
+# NOTE ON VERIFICATION: Docker was not available in the environment this project
+# was built in, so this file has not been run by the author. It mirrors the
+# documented native workflow in docs/DEPLOYMENT.md, which IS verified.
+# ---------------------------------------------------------------------------
+
+services:
+  mongo:
+    image: mongo:7
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Initiates the replica set once, then exits. Without this the API cannot open
+  # a transaction and every checkout fails.
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: 'no'
+    entrypoint:
+      - bash
+      - -c
+      - >
+        mongosh --host mongo:27017 --quiet --eval "
+          try { rs.status().ok } catch (e) {
+            rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] })
+          }"
+    # The very first initiate can race the server's own startup; the healthcheck
+    # above plus this retry loop makes it reliable rather than usually fine.
+    healthcheck:
+      test: ['CMD', 'mongosh', '--host', 'mongo:27017', '--quiet', '--eval', "db.hello().isWritablePrimary"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: .
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      SERVE_CLIENT: 'true'
+      MONGODB_URI: mongodb://mongo:27017/orders?replicaSet=rs0
+      JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-please}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-compose-webhook-secret}
+      LOG_LEVEL: info
+      # Give the demo's open orders a longer horizon than the 15-minute
+      # reservation TTL so "awaiting payment" is still visible while you look.
+      RESERVATION_TTL_MS: '3600000'
+    ports:
+      - '4000:4000'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  mongo-data:

@@ -1,0 +1,28 @@
+node_modules
+**/node_modules
+
+# Local build output is rebuilt inside the image.
+client/dist
+dist
+
+# Local MongoDB artefacts: a replica-set URI and a data directory that can be
+# hundreds of megabytes after a few test runs.
+server/.dev-mongo-uri
+server/.dev-mongo-data
+server/.test-mongo-uri
+server/.mongodb-binaries
+
+# Secrets and local state must never be baked into a layer.
+.env
+.env.local
+*.log
+server/.api.log
+
+# Repository metadata and documentation are not needed to build or run.
+.git
+.gitignore
+.github
+docs
+*.md
+coverage
+.cache
