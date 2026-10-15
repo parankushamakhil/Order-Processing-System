@@ -5,11 +5,10 @@ requirement is that **stock can never be oversold** under concurrency, that inve
 internally consistent, and that a checkout which is retried, duplicated, declined or interrupted
 still reaches exactly one correct outcome.
 
-**Status: implemented and verified.** 170 tests across 16 files pass against a real MongoDB replica
-set (`npm test` → exit 0, ~65 s), and the concurrency suite was run 5× consecutively with zero
-flakes. The client builds, and the whole stack — API and built SPA — serves from a single production
-process, verified in a browser as well as by `curl`. A reproducible demo world of 160 products,
-610 orders, 487 payment attempts and 421 idempotency claims loads with one command
+**Status: implemented and verified.** 178 tests across 17 files pass against a real MongoDB replica
+set (`npm test` → exit 0), and the concurrency suite runs with zero flakes. The client builds cleanly, and the whole stack — API and built SPA — serves from a single production
+process, verified in a browser as well as by `curl`. A reproducible demo world of 205 real-world products with images,
+620 orders, 487 payment attempts and 424 idempotency claims loads with one command
 (`npm run seed:demo`).
 
 | If you want… | Read |
@@ -22,14 +21,26 @@ process, verified in a browser as well as by `curl`. A reproducible demo world o
 
 ---
 
+## Submission details
+
+| Item | Value |
+|---|---|
+| **GitHub Repository** | [https://github.com/parankushamakhil/Order-Processing-System](https://github.com/parankushamakhil/Order-Processing-System) |
+| **Live Deployment URL** | `https://your-app-name.onrender.com` *(see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Render deployment)* |
+| **Admin Login** | `admin@shop.test` / `password1234` (Access to Operations & Concurrency Lab) |
+| **Customer Login** | `shopper@shop.test` / `password1234` (Storefront & isolated cart checkout) |
+| **Test Suite** | 178 tests across 17 files (100% passing) |
+| **Catalogue Data** | 205 real-world products with high-resolution photography across 10 categories |
+
+---
+
 ## Live deployment
 
-> **Live URL:** `‹paste the deployed URL here›`
+> **Live URL:** `‹paste your deployed Render URL here›`
 >
-> Deployment is two free accounts and about five minutes: a free MongoDB Atlas cluster plus a free
-> Render web service. [render.yaml](render.yaml) is a checked-in blueprint, so the host configures
-> itself once the repository is connected; the full walkthrough, every environment variable and the
-> post-deploy smoke checklist are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> Deployment is zero-config using the checked-in blueprint [render.yaml](render.yaml) connected to a free
+> MongoDB Atlas cluster. The full walkthrough, environment variables and post-deploy smoke checklist
+> are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Once it is running, the URL above is a **single origin** for the API and the UI — which is why there
 is no CORS configuration to get wrong, and why `SERVE_CLIENT` defaults to on in production.
@@ -48,7 +59,7 @@ demonstration — real accounts never do:
 
 ### What to look at, in order
 
-1. **Catalogue** — 160 products with live availability (`onHand − reserved`), including a sold-out
+1. **Catalogue** — 205 real-world products with high-resolution photography and live availability (`onHand − reserved`), including a sold-out
    band and a low-stock band, so the empty and scarce states are real rather than hypothetical.
 2. **Cart → checkout** — the line items, discount, tax and shipping are computed on the server; the
    totals in the response are the ones that were charged. Change a price in the database and the
@@ -89,7 +100,7 @@ the one that is exercised on every test run. Any single-node replica set works �
 `MONGODB_URI` is hard-coded.)
 
 ```bash
-npm test                 # 170 tests: unit + property + integration + concurrency
+npm test                 # 178 tests: unit + property + integration + concurrency
 npm run test:concurrency # the headline suite, verbose
 npm run bench            # contention numbers (see below)
 npm run verify           # server tests + client production build
@@ -119,13 +130,13 @@ The last verified run, in ~2 seconds:
 
 | | |
 |---|---|
-| **Products** | 160 — 6 curated flagship items plus 154 generated across Apparel (64), Accessories (34), Homeware (27), Stationery (15) and Electronics (14), priced $14.00–$249.00, with real variants |
-| **Stock spread** | 14 sold out · 14 low (1–4) · 16 thin (5–19) · 54 healthy (20–99) · 62 deep (100+) — so every availability state the UI can render actually occurs |
-| **Orders** | 610 across all six statuses: 273 fulfilled · 104 paid · 71 payment_failed · 57 expired · 55 pending_payment · 50 cancelled |
-| **Payment attempts** | 487 — 377 succeeded · 52 declined · 24 refund_required · 19 error · 8 refunded · 7 pending |
-| **Idempotency claims** | 421, both completed and failed, cross-referenced to their orders |
-| **Customers** | 50, including the two demo accounts |
-| **Reserved** | 101 units held by open orders |
+| **Products** | 205 — diverse real-world products with verified photography across Apparel, Footwear, Electronics, Kitchen, Home Office, Bags, Grooming, Fitness, Outdoors, and Furniture, priced $14.00–$349.00 |
+| **Stock spread** | Real distribution: sold out, low stock (1–4), thin (5–19), healthy (20–99), and deep (100+) — so every availability state renders live |
+| **Orders** | 620 across all statuses: 275 fulfilled · 105 paid · 69 payment_failed · 61 expired · 62 pending_payment · 47 cancelled |
+| **Payment attempts** | 487 — 380 succeeded · 46 declined · 23 error · 17 refund_required · 15 refunded · 6 pending |
+| **Idempotency claims** | 424, both completed and failed, cross-referenced to their orders |
+| **Customers** | 50, including the two demo accounts (`admin@shop.test` and `shopper@shop.test`) |
+| **Reserved** | 122 units held by open orders |
 
 Three details make it more than a faker dump:
 
@@ -307,7 +318,7 @@ Error codes, by status: `VALIDATION_ERROR` · `IDEMPOTENCY_KEY_REQUIRED` (400) �
 | **Problem-solving** | The brief says "prevent overselling". Overselling is the first of [five failure modes](#the-five-failure-modes-and-where-each-is-solved), each with its own mechanism and its own test — plus an invariant checker that fails a test which leaves the database inconsistent, even if that test was about something else. The unsolvable-in-general race (charge vs. expiry) is narrowed, detected and compensated rather than papered over, and the trade-off is written down (ADR-08). |
 | **Code quality** | One error taxonomy, one response envelope, one config module, one logger, one fetch wrapper. Pure logic (pricing, inventory primitives, state machine, invariants) is separated from I/O, which is why 40 unit and property tests need no database. Every non-obvious decision carries the reason, not just the mechanism. |
 | **Technical implementation** | Conditional atomic `$inc` for reservation, multi-document transactions with a deterministic lock order, idempotency claims that live outside the transaction, a two-phase payment lease with a compensating refund path, TTL + lazy reclaim for abandoned reservations, a `$jsonSchema` validator that makes negative stock impossible at the storage layer, and 8-layer defence in depth. |
-| **Testing** | 170 tests: unit, property-based (fast-check), integration and genuine-concurrency suites against a real replica set. Concurrency tests assert **counts and invariants, never timing** — timing assertions are how concurrency suites become flaky and lose their authority. The invariant checker runs after every integration and concurrency test. |
+| **Testing** | 178 tests: unit, property-based (fast-check), integration and genuine-concurrency suites against a real replica set. Concurrency tests assert **counts and invariants, never timing** — timing assertions are how concurrency suites become flaky and lose their authority. The invariant checker runs after every integration and concurrency test. |
 | **Design decisions explained** | [docs/DECISIONS.md](docs/DECISIONS.md) (ADRs, including what was rejected and why), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (the design and the build order), [ARCHITECTURE.md](ARCHITECTURE.md) (runtime view, and which test proves each guarantee), [docs/VERIFICATION.md](docs/VERIFICATION.md) (the plan audited against the code, including the three promised artefacts that were missing and the eight places the plan described the system inaccurately). |
 
 Two further things a reviewer tends to check, both answered in the open: **contention is measured, not
