@@ -200,7 +200,6 @@ export default function CartPage({ onBrowse }) {
 
                   <div style={{ minWidth: 0 }}>
                     <p className="line-item__name">{line.name}</p>
-                    <p className="line-item__sku">{line.sku}</p>
                     <p className="text-subtle" style={{ fontSize: 'var(--fs-xs)' }}>
                       {formatMinor(line.priceMinor)} each
                     </p>
