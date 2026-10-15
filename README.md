@@ -13,9 +13,7 @@ process, verified in a browser as well as by `curl`. A reproducible demo world o
 
 | If you want… | Read |
 |---|---|
-| The complete design | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 | *Why* each hard choice was made, and what was rejected | [docs/DECISIONS.md](docs/DECISIONS.md) |
-| How the running system fits together, and which test proves each guarantee | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | What was audited against the plan, and what the audit found | [docs/VERIFICATION.md](docs/VERIFICATION.md) |
 | How to deploy it, and how to verify the deploy | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 
@@ -319,7 +317,7 @@ Error codes, by status: `VALIDATION_ERROR` · `IDEMPOTENCY_KEY_REQUIRED` (400) �
 | **Code quality** | One error taxonomy, one response envelope, one config module, one logger, one fetch wrapper. Pure logic (pricing, inventory primitives, state machine, invariants) is separated from I/O, which is why 40 unit and property tests need no database. Every non-obvious decision carries the reason, not just the mechanism. |
 | **Technical implementation** | Conditional atomic `$inc` for reservation, multi-document transactions with a deterministic lock order, idempotency claims that live outside the transaction, a two-phase payment lease with a compensating refund path, TTL + lazy reclaim for abandoned reservations, a `$jsonSchema` validator that makes negative stock impossible at the storage layer, and 8-layer defence in depth. |
 | **Testing** | 178 tests: unit, property-based (fast-check), integration and genuine-concurrency suites against a real replica set. Concurrency tests assert **counts and invariants, never timing** — timing assertions are how concurrency suites become flaky and lose their authority. The invariant checker runs after every integration and concurrency test. |
-| **Design decisions explained** | [docs/DECISIONS.md](docs/DECISIONS.md) (ADRs, including what was rejected and why), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (the design and the build order), [ARCHITECTURE.md](ARCHITECTURE.md) (runtime view, and which test proves each guarantee), [docs/VERIFICATION.md](docs/VERIFICATION.md) (the plan audited against the code, including the three promised artefacts that were missing and the eight places the plan described the system inaccurately). |
+| **Design decisions explained** | [docs/DECISIONS.md](docs/DECISIONS.md) (ADRs, including what was rejected and why), [docs/VERIFICATION.md](docs/VERIFICATION.md) (the plan audited against the code, including the three promised artefacts and the eight descriptions that were corrected), and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (Atlas + Render walkthrough). |
 
 Two further things a reviewer tends to check, both answered in the open: **contention is measured, not
 asserted** (and the measurement contradicted the plan's claim, which is reported as found), and
@@ -347,8 +345,6 @@ server/src/scripts/seedDemo.js reproducible demonstration world (I1-I7 asserted 
 server/tests/                  unit · property · integration · concurrency
 client/                        React 19 + Vite 8 SPA, incl. the Concurrency Lab
 client/public/theme-init.js    pre-paint theme, extracted so a strict CSP can stay on
-ARCHITECTURE.md                runtime view + guarantee -> enforcement -> proof
-IMPLEMENTATION_PLAN.md         the design, and the build order
 docs/DECISIONS.md              the ADRs
 docs/VERIFICATION.md           the audit of the plan against the code
 docs/DEPLOYMENT.md             Atlas + Render walkthrough and the post-deploy checks

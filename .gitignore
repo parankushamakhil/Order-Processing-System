@@ -88,3 +88,7 @@ $RECYCLE.BIN/
 .claude/
 .cursor/
 scratch/
+
+# ---- internal design and architecture docs --------------------------------
+ARCHITECTURE.md
+IMPLEMENTATION_PLAN.md
