@@ -100,7 +100,17 @@ export function createApp() {
   app.set('trust proxy', true);
 
   app.use(requestContext);
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'img-src': ["'self'", 'data:', 'blob:', 'https://images.unsplash.com', 'https:'],
+        },
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   // Built once, not per request. Same-origin callers bypass it entirely (see
   // isOwnOrigin); everything else must match the configured allowlist.

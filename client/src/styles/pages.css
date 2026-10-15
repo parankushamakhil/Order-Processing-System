@@ -402,6 +402,7 @@
 
 .tile--img {
   height: 180px;
+  display: block;
   background: var(--surface-subtle);
 }
 

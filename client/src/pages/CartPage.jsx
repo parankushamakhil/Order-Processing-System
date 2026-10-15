@@ -258,10 +258,19 @@ export default function CartPage({ onBrowse }) {
             <CardBody flush>
               {lines.map((line) => (
                 <div className="line-item" key={line.productId}>
-                  <span className="line-item__thumb tile" style={productTileStyle(line.sku)}>
-                    <span aria-hidden="true" style={{ fontSize: 15 }}>
-                      {monogram(line.name)}
-                    </span>
+                  <span className="line-item__thumb tile" style={line.imageUrl ? { overflow: 'hidden', padding: 0 } : productTileStyle(line.sku)}>
+                    {line.imageUrl ? (
+                      <img
+                        src={line.imageUrl}
+                        alt={line.name}
+                        referrerPolicy="no-referrer"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <span aria-hidden="true" style={{ fontSize: 15 }}>
+                        {monogram(line.name)}
+                      </span>
+                    )}
                   </span>
 
                   <div style={{ minWidth: 0 }}>

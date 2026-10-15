@@ -280,6 +280,7 @@ export default function CatalogPage({ onGoToCart }) {
                     src={product.imageUrl}
                     alt={product.name}
                     loading="lazy"
+                    referrerPolicy="no-referrer"
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                   {!product.inStock ? (

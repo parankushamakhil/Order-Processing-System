@@ -71,6 +71,7 @@ export function CartProvider({ userId, children }) {
           sku: product.sku,
           name: product.name,
           priceMinor: product.priceMinor,
+          imageUrl: product.imageUrl ?? '',
           quantity,
         },
       ];
