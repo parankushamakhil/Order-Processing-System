@@ -183,28 +183,6 @@ what prevents overselling.
 
 
 --------------------------------------------------------------------------------
-A BUG WORTH READING
---------------------------------------------------------------------------------
-
-While implementing the reaper, a query used paymentLeaseExpiresAt: { $lte: now } on the theory
-that null sorts below dates. That is true of sort order and false of query operators: MongoDB
-comparison operators are type-bracketed, so $lte: <Date> never matches null or a missing
-field. The predicate therefore silently disabled expiry for exactly the orders that needed it most —
-a timed-out charge whose lease had been cleared — while every obvious test still passed. It was
-caught by an end-to-end reaper test, and the same mistake was found in the invariants checker, where
-it would have hidden stranded orders instead of reporting them. Full write-up in ADR-08.
-
-A second one, found only by opening the deployed build in a browser. Vite emits crossorigin on the
-module script and stylesheet of the built SPA, so the browser sends an Origin header on those
-same-origin requests. The CORS middleware treated "has an Origin header" as "is cross-origin",
-looked it up in the allowlist, and answered 403 with the API's JSON error envelope — meaning the
-production build loaded no CSS and no JavaScript at all. Every API test passed, every curl
-check passed, /healthz was green: curl sends no Origin header, so the broken path was
-invisible to the exact tools used to verify the deploy. The fix is a same-origin check before the
-allowlist, and the regression test sends an Origin equal to the request's own host.
-
-
---------------------------------------------------------------------------------
 API REFERENCE
 --------------------------------------------------------------------------------
 

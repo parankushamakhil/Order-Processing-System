@@ -226,28 +226,6 @@ The real fix for the herd — bucketing a hot counter across N documents — is 
 scope: it complicates `available = onHand − reserved`, and shipping a complex mechanism that is
 faster on a synthetic benchmark is worse engineering than shipping the simple one that is provably correct.
 
-## A bug worth reading
-
-While implementing the reaper, a query used `paymentLeaseExpiresAt: { $lte: now }` on the theory
-that `null` sorts below dates. That is true of *sort order* and false of *query operators*: MongoDB
-comparison operators are **type-bracketed**, so `$lte: <Date>` never matches `null` or a missing
-field. The predicate therefore silently disabled expiry for exactly the orders that needed it most —
-a timed-out charge whose lease had been cleared — while every obvious test still passed. It was
-caught by an end-to-end reaper test, and the same mistake was found in the invariants checker, where
-it would have hidden stranded orders instead of reporting them. Full write-up in ADR-08.
-
-A second one, found only by opening the deployed build in a browser. Vite emits `crossorigin` on the
-module script and stylesheet of the built SPA, so the browser sends an `Origin` header on those
-same-origin requests. The CORS middleware treated "has an `Origin` header" as "is cross-origin",
-looked it up in the allowlist, and answered 403 with the API's JSON error envelope — meaning the
-production build loaded **no CSS and no JavaScript at all**. Every API test passed, every `curl`
-check passed, `/healthz` was green: `curl` sends no `Origin` header, so the broken path was
-invisible to the exact tools used to verify the deploy. The fix is a same-origin check before the
-allowlist, and the regression test sends an `Origin` equal to the request's own host — it fails
-without the fix (403 where a 200 is required), which is the property that makes it worth having.
-Both bugs share a lesson worth more than either fix: **verify through the interface the user will
-actually use.**
-
 ## API reference
 
 One envelope everywhere: success is `{ data: … }`, failure is
@@ -312,11 +290,6 @@ Error codes, by status: `VALIDATION_ERROR` · `IDEMPOTENCY_KEY_REQUIRED` (400) �
 | **Technical implementation** | Conditional atomic `$inc` for reservation, multi-document transactions with a deterministic lock order, idempotency claims that live outside the transaction, a two-phase payment lease with a compensating refund path, TTL + lazy reclaim for abandoned reservations, a `$jsonSchema` validator that makes negative stock impossible at the storage layer, and 8-layer defence in depth. |
 | **Testing** | 178 tests: unit, property-based (fast-check), integration and genuine-concurrency suites against a real replica set. Concurrency tests assert **counts and invariants, never timing** — timing assertions are how concurrency suites become flaky and lose their authority. The invariant checker runs after every integration and concurrency test. |
 | **Design decisions explained** | [docs/DECISIONS.md](docs/DECISIONS.md) (ADRs, including what was rejected and why) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (Atlas + Render walkthrough). |
-
-Two further things a reviewer tends to check, both answered in the open: **contention is measured, not
-asserted**, and **failures are owned** — the reaper bug in ADR-08 and the same-origin CORS bug are both written up
-with how they were found, because a submission that claims to have had no bugs is a submission that
-did not look.
 
 ---
 
