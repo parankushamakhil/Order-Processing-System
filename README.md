@@ -105,9 +105,7 @@ NODE_ENV=production npm start          # http://localhost:4000 serves both
 ```
 
 `SERVE_CLIENT` defaults to on when `NODE_ENV=production`, so there is no second service and no CORS
-between the two halves. To run the whole stack in containers instead — MongoDB, the replica-set
-init and the API — `docker compose up --build` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md); Docker
-was unavailable in the authoring environment, so that path is provided but explicitly unverified).
+between the two halves.
 
 ---
 
@@ -343,7 +341,7 @@ IMPLEMENTATION_PLAN.md         the design, and the build order
 docs/DECISIONS.md              the ADRs
 docs/VERIFICATION.md           the audit of the plan against the code
 docs/DEPLOYMENT.md             Atlas + Render walkthrough and the post-deploy checks
-Dockerfile · docker-compose.yml · render.yaml   container and blueprint deployment paths
+render.yaml                    blueprint deployment path for Render
 .github/workflows/ci.yml       server tests + client build on every push
 ```
 

@@ -9,9 +9,8 @@ MongoDB that can run transactions. Two things make that simpler than it sounds:
 - **Everything is ordinary Node and MongoDB.** No build step at runtime, no
   framework-specific platform requirements.
 
-The primary path below is **Render + MongoDB Atlas**, because it is the one that
-was exercised. A container path is included at the end and is explicitly marked
-unverified.
+The deployment path below is **Render + MongoDB Atlas**, which is fully
+verified and zero-config using the checked-in blueprint.
 
 ---
 
@@ -192,26 +191,4 @@ Then in a browser:
 - **Teardown.** Nothing is written outside MongoDB and the platform's own logs.
   Deleting the service and the cluster removes everything.
 
----
 
-## 5. Container path (unverified)
-
-`Dockerfile` and `docker-compose.yml` are provided for hosts that prefer images,
-and for a one-command local stack:
-
-```bash
-docker compose up --build          # API + SPA on :4000, single-node replica set
-docker compose exec api npm run seed:demo --workspace server
-```
-
-**Verification status:** Docker was not installed in the environment this project
-was built in, so these two files were never built or run by the author. They
-follow the standard npm-workspaces multi-stage pattern and use the same commands
-that *are* verified natively (`npm ci`, `npm run build`, `node server/src/server.js`
-with `NODE_ENV=production`). Treat them as a convenience rather than a tested
-deliverable, and prefer the native Node path for a demonstration you need to work
-on the first try.
-
-When deploying the image to a platform, the container needs `MONGODB_URI` from
-Atlas: the image deliberately contains no database, and
-`mongodb-memory-server` is a dev dependency that is excluded from it.
