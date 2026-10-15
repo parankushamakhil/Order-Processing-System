@@ -413,7 +413,20 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
                     {order.items.map((item) => (
                       <tr key={item.sku}>
                         <td className="mono">{item.sku}</td>
-                        <td className="table__primary">{item.name}</td>
+                        <td className="table__primary">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                style={{ width: 28, height: 28, borderRadius: 'var(--r-xs)', objectFit: 'cover', display: 'block' }}
+                              />
+                            ) : null}
+                            <span>{item.name}</span>
+                          </div>
+                        </td>
                         <td className="is-numeric">{item.quantity}</td>
                         <td className="is-numeric text-muted">
                           {formatMinor(item.unitPriceMinor)}

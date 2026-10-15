@@ -490,6 +490,7 @@ export function buildOrders({ products, customers, targetCount }) {
         productId: product._id,
         sku: product.sku,
         name: product.name,
+        imageUrl: product.imageUrl ?? '',
         quantity,
         unitPriceMinor: product.priceMinor,
         lineTotalMinor: product.priceMinor * quantity,

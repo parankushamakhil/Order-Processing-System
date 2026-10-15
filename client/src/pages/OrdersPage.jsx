@@ -323,11 +323,25 @@ export default function OrdersPage() {
                             <div className="cluster">
                               <span
                                 className="line-item__thumb tile"
-                                style={{ ...productTileStyle(item.sku), width: 32, height: 32 }}
+                                style={
+                                  item.imageUrl
+                                    ? { width: 32, height: 32, overflow: 'hidden', padding: 0 }
+                                    : { ...productTileStyle(item.sku), width: 32, height: 32 }
+                                }
                               >
-                                <span aria-hidden="true" style={{ fontSize: 11 }}>
-                                  {monogram(item.name)}
-                                </span>
+                                {item.imageUrl ? (
+                                  <img
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  />
+                                ) : (
+                                  <span aria-hidden="true" style={{ fontSize: 11 }}>
+                                    {monogram(item.name)}
+                                  </span>
+                                )}
                               </span>
                               <span>
                                 <span className="table__primary">{item.name}</span>

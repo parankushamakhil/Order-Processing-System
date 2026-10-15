@@ -13,6 +13,7 @@ const orderItemSchema = new mongoose.Schema(
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
     sku: { type: String, required: true },
     name: { type: String, required: true },
+    imageUrl: { type: String, default: '', maxlength: 500 },
     quantity: integer({ min: 1 }),
     // Price snapshot. A priced order is an immutable financial record: if the
     // catalogue price changes tomorrow, this order must still explain what the
@@ -107,6 +108,7 @@ orderSchema.methods.toPublic = function toPublic() {
       productId: String(i.productId),
       sku: i.sku,
       name: i.name,
+      imageUrl: i.imageUrl ?? '',
       quantity: i.quantity,
       unitPriceMinor: i.unitPriceMinor,
       lineTotalMinor: i.lineTotalMinor,

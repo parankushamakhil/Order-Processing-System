@@ -169,6 +169,7 @@ async function runCheckout({ customerId, items, input, record, idempotencyKey, a
       productId: product._id,
       sku: product.sku,
       name: product.name,
+      imageUrl: product.imageUrl ?? '',
       quantity: i.quantity,
       unitPriceMinor: product.priceMinor,
     };
@@ -276,6 +277,7 @@ async function createOrderWithReservation({ customerId, pricedLines, pricing, re
                 productId: line.productId,
                 sku: line.sku,
                 name: line.name,
+                imageUrl: line.imageUrl ?? '',
                 quantity: line.quantity,
                 unitPriceMinor: line.unitPriceMinor,
                 lineTotalMinor: line.unitPriceMinor * line.quantity,
