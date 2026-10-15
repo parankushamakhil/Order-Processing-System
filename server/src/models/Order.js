@@ -123,6 +123,7 @@ orderSchema.methods.toPublic = function toPublic() {
     holdsStock: HOLDING_STATUSES.includes(this.status),
     isTerminal: TERMINAL_STATUSES.includes(this.status),
     reservationExpiresAt: this.reservationExpiresAt,
+    failureReason: this.failureReason,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
   };

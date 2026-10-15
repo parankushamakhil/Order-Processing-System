@@ -28,6 +28,7 @@ export const PAYMENT_SCENARIOS = [
   { token: 'tok_decline', label: 'Declined', detail: 'Stock is released and the key stays retryable.' },
   { token: 'tok_error', label: 'Provider error', detail: 'Treated as a failed payment; stock is released.' },
   { token: 'tok_timeout', label: 'No answer', detail: 'The outcome is unknown; the order stays pending.' },
+  { token: 'tok_random', label: 'Random (flaky)', detail: 'Simulates intermittent network/gateway degradation.' },
 ];
 
 export function CartProvider({ children }) {

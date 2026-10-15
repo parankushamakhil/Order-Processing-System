@@ -74,6 +74,10 @@ export default function CatalogPage({ onGoToCart }) {
   const toast = useToast();
 
   const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(24);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -86,19 +90,37 @@ export default function CatalogPage({ onGoToCart }) {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.products(query ? `?q=${encodeURIComponent(query)}` : '');
+      const params = new URLSearchParams();
+      if (query) params.set('q', query);
+      if (inStockOnly) params.set('inStock', 'true');
+      params.set('page', String(page));
+      params.set('pageSize', String(pageSize));
+      const { data } = await api.products(`?${params.toString()}`);
       setProducts(data.items);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, inStockOnly, page, pageSize]);
 
   useEffect(() => {
     const timer = setTimeout(load, query ? 220 : 0);
     return () => clearTimeout(timer);
-  }, [load, query]);
+  }, [load, query, inStockOnly, page, pageSize]);
+
+  // Reset page when filter or search changes
+  function handleQueryChange(val) {
+    setQuery(val);
+    setPage(1);
+  }
+
+  function handleInStockChange(val) {
+    setInStockOnly(val);
+    setPage(1);
+  }
 
   // "/" lives in the shared keymap rather than here, so all bindings are
   // declared in one place and none of them can silently shadow another.
@@ -109,7 +131,10 @@ export default function CatalogPage({ onGoToCart }) {
   useEffect(
     () =>
       on(EVENTS.focusCatalogueSearch, ({ query: next } = {}) => {
-        if (typeof next === 'string') setQuery(next);
+        if (typeof next === 'string') {
+          setQuery(next);
+          setPage(1);
+        }
         searchRef.current?.focus();
         searchRef.current?.select();
       }),
@@ -119,9 +144,8 @@ export default function CatalogPage({ onGoToCart }) {
   useEffect(() => on(EVENTS.refreshView, () => load()), [load]);
 
   const visible = useMemo(() => {
-    const filtered = inStockOnly ? products.filter((p) => p.inStock) : products;
-    return sortProducts(filtered, sort);
-  }, [products, sort, inStockOnly]);
+    return sortProducts(products, sort);
+  }, [products, sort]);
 
   const reference = useMemo(
     () => Math.max(10, ...products.map((p) => p.available)),
@@ -165,7 +189,7 @@ export default function CatalogPage({ onGoToCart }) {
               icon={SearchIcon}
               placeholder="Search by name or SKU"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => handleQueryChange(event.target.value)}
               aria-label="Search the catalogue"
               suffix={query ? undefined : 'Press /'}
             />
@@ -181,19 +205,19 @@ export default function CatalogPage({ onGoToCart }) {
             </SelectField>
           </div>
 
-          <Switch checked={inStockOnly} onChange={setInStockOnly} label="In stock only" />
+          <Switch checked={inStockOnly} onChange={handleInStockChange} label="In stock only" />
 
           <div className="cluster-end">
             <span className="result-count">
-              {loading ? 'Loading…' : `${visible.length} of ${products.length} products`}
-              {outOfStock > 0 && !loading ? ` · ${outOfStock} unavailable` : ''}
+              {loading ? 'Loading…' : `${visible.length} of ${total} products`}
+              {outOfStock > 0 && !loading ? ` · ${outOfStock} out on this page` : ''}
             </span>
             {query ? (
               <Button
                 size="sm"
                 variant="ghost"
                 icon={XIcon}
-                onClick={() => setQuery('')}
+                onClick={() => handleQueryChange('')}
                 aria-label="Clear search"
               >
                 Clear
@@ -322,6 +346,37 @@ export default function CatalogPage({ onGoToCart }) {
           );
         })}
       </div>
+
+      {totalPages > 1 ? (
+        <Card style={{ marginTop: 'var(--sp-5)' }}>
+          <div className="pager" style={{ padding: 'var(--sp-3) var(--sp-4)' }}>
+            <span className="pager__label">
+              Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total} products
+            </span>
+            <div className="cluster">
+              <Button
+                size="sm"
+                variant="default"
+                disabled={page <= 1}
+                onClick={() => setPage((n) => Math.max(1, n - 1))}
+              >
+                Previous
+              </Button>
+              <span className="pager__page">
+                {page} / {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="default"
+                disabled={page >= totalPages}
+                onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
     </>
   );
 }

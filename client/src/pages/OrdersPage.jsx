@@ -124,19 +124,31 @@ export default function OrdersPage() {
     }
   }
 
-  async function cancelSelected() {
-    setCancelling(true);
+  const [confirmAction, setConfirmAction] = useState(null); // 'cancel' | 'refund'
+  const [actionBusy, setActionBusy] = useState(false);
+
+  async function handleAction() {
+    if (!confirmAction || !selected) return;
+    setActionBusy(true);
     try {
-      await api.cancelOrder(selected.id);
-      toast.success(`Order ${selected.orderNumber} cancelled`, 'Its reserved stock is back on sale.');
-      setConfirmCancel(false);
+      if (confirmAction === 'cancel') {
+        await api.cancelOrder(selected.id);
+        toast.success(`Order ${selected.orderNumber} cancelled`, 'Its reserved stock is back on sale.');
+      } else {
+        const { data: body } = await api.refundPayment(selected.id);
+        toast.success(
+          body.refund?.alreadyRefunded ? 'Already refunded' : 'Refund recorded',
+          `${selected.orderNumber} was refunded.`,
+        );
+      }
+      setConfirmAction(null);
       const { data } = await api.order(selected.id);
       setSelected(data.order);
       await load();
     } catch (err) {
-      toast.error('Could not cancel the order', err.message);
+      toast.error(confirmAction === 'cancel' ? 'Could not cancel the order' : 'Could not refund the order', err.message);
     } finally {
-      setCancelling(false);
+      setActionBusy(false);
     }
   }
 
@@ -258,13 +270,22 @@ export default function OrdersPage() {
             <>
               <StatusPill status={selected.status} />
               <div className="card__actions">
-                {isAdmin && (selected.status === 'pending_payment' || selected.status === 'paid') ? (
+                {isAdmin && selected.status === 'pending_payment' ? (
                   <Button
                     variant="danger-ghost"
-                    onClick={() => setConfirmCancel(true)}
-                    disabled={cancelling}
+                    onClick={() => setConfirmAction('cancel')}
+                    disabled={actionBusy}
                   >
                     Cancel order
+                  </Button>
+                ) : null}
+                {isAdmin && (selected.status === 'paid' || selected.payment?.status === 'refund_required') ? (
+                  <Button
+                    variant="primary"
+                    onClick={() => setConfirmAction('refund')}
+                    disabled={actionBusy}
+                  >
+                    Refund
                   </Button>
                 ) : null}
               </div>
@@ -366,6 +387,7 @@ export default function OrdersPage() {
                   rows={[
                     { k: 'Order id', v: <span className="mono">{selected.id}</span> },
                     { k: 'Status', v: STATUS_LABELS[selected.status] ?? selected.status },
+                    ...(selected.failureReason ? [{ k: 'Failure reason', v: selected.failureReason }] : []),
                     { k: 'Holds stock', v: selected.holdsStock ? 'Yes' : 'No' },
                     { k: 'Terminal', v: selected.isTerminal ? 'Yes' : 'No' },
                     { k: 'Payment provider', v: selected.payment?.provider ?? '—' },
@@ -391,17 +413,24 @@ export default function OrdersPage() {
       </Drawer>
 
       <ConfirmDialog
-        open={confirmCancel}
-        onClose={() => setConfirmCancel(false)}
-        onConfirm={cancelSelected}
-        busy={cancelling}
-        title={selected ? `Cancel ${selected.orderNumber}?` : 'Cancel order?'}
-        body={
-          selected?.status === 'paid'
-            ? 'This order was paid. Cancelling releases the stock and implies a refund — record it against the payment provider.'
-            : 'The order will be marked cancelled and its reserved units return to sale immediately.'
+        open={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleAction}
+        busy={actionBusy}
+        tone={confirmAction === 'cancel' ? 'danger' : 'primary'}
+        title={
+          confirmAction === 'cancel'
+            ? `Cancel ${selected?.orderNumber}?`
+            : `Refund ${selected?.orderNumber}?`
         }
-        confirmLabel="Cancel order"
+        body={
+          confirmAction === 'cancel'
+            ? 'The order will be marked cancelled and its reserved units return to sale immediately.'
+            : `The payment provider will be asked to refund ${formatMinor(
+                selected?.pricing?.totalMinor ?? 0,
+              )}. This operation is idempotent.`
+        }
+        confirmLabel={confirmAction === 'cancel' ? 'Cancel order' : 'Issue refund'}
       />
     </>
   );
