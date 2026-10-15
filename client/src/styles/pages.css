@@ -400,6 +400,26 @@
   color: hsl(var(--tile-h) 42% 74%);
 }
 
+.tile--img {
+  height: 180px;
+  background: var(--surface-subtle);
+}
+
+.tile--img::after {
+  display: none;
+}
+
+.tile--img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur) var(--ease);
+}
+
+.product-card:hover .tile--img img {
+  transform: scale(1.04);
+}
+
 .tile__sku {
   position: absolute;
   left: var(--sp-3);

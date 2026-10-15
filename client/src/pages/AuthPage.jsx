@@ -48,14 +48,20 @@ export default function AuthPage({ onSignedIn }) {
   const emailId = useId();
   const passwordId = useId();
 
-  async function submit(event) {
-    event.preventDefault();
+  async function submit(event, customEmail, customPassword) {
+    if (event?.preventDefault) event.preventDefault();
     setBusy(true);
     setError(null);
+    const targetEmail = customEmail || email;
+    const targetPassword = customPassword || password;
     try {
-      if (mode === 'signin') await login(email, password);
-      else await register(email, password, email.split('@')[0]);
-      onSignedIn();
+      let loggedUser;
+      if (mode === 'signin') {
+        loggedUser = await login(targetEmail, targetPassword);
+      } else {
+        loggedUser = await register(targetEmail, targetPassword, targetEmail.split('@')[0]);
+      }
+      onSignedIn?.(loggedUser);
     } catch (err) {
       setError(err);
     } finally {
@@ -111,6 +117,83 @@ export default function AuthPage({ onSignedIn }) {
               ]}
             />
           </div>
+
+          {mode === 'signin' && (
+            <div style={{ marginBottom: 'var(--sp-4)' }}>
+              <p className="text-subtle" style={{ fontSize: 'var(--fs-xs)', marginBottom: 'var(--sp-2)' }}>
+                Choose role to sign in:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  disabled={busy}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    padding: 'var(--sp-3)',
+                    height: 'auto',
+                    border: email === 'admin@shop.test' ? '2px solid var(--accent)' : '1px solid var(--border)',
+                    borderRadius: 'var(--r-md)',
+                    textAlign: 'left',
+                    background: email === 'admin@shop.test' ? 'var(--surface-subtle)' : 'var(--surface)',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    setEmail('admin@shop.test');
+                    setPassword(PASSWORD);
+                    submit(null, 'admin@shop.test', PASSWORD);
+                  }}
+                  title="Sign in as Administrator (Operations & Inventory Lab)"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)' }}>
+                    <ShieldIcon size={14} /> Admin
+                  </div>
+                  <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-subtle)', marginTop: 2 }}>
+                    admin@shop.test
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  disabled={busy}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    padding: 'var(--sp-3)',
+                    height: 'auto',
+                    border: email === 'shopper@shop.test' ? '2px solid var(--accent)' : '1px solid var(--border)',
+                    borderRadius: 'var(--r-md)',
+                    textAlign: 'left',
+                    background: email === 'shopper@shop.test' ? 'var(--surface-subtle)' : 'var(--surface)',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    setEmail('shopper@shop.test');
+                    setPassword(PASSWORD);
+                    submit(null, 'shopper@shop.test', PASSWORD);
+                  }}
+                  title="Sign in as Customer (Storefront & Shopping Cart)"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'var(--fw-semibold)', color: 'var(--text-strong)' }}>
+                    <UserIcon size={14} /> Customer
+                  </div>
+                  <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-subtle)', marginTop: 2 }}>
+                    shopper@shop.test
+                  </span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', margin: 'var(--sp-4) 0 var(--sp-2)', color: 'var(--text-subtle)', fontSize: 'var(--fs-xs)' }}>
+                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span>or enter credentials</span>
+                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
+            </div>
+          )}
 
           <form onSubmit={submit} className="stack" noValidate>
             <Field label="Work email" htmlFor={emailId}>

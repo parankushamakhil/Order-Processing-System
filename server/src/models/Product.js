@@ -29,6 +29,8 @@ const productSchema = new mongoose.Schema(
     reserved: { ...integer(), default: 0 },
     available: { ...integer(), default: 0 },
     isActive: { type: Boolean, default: true },
+    imageUrl: { type: String, default: '', maxlength: 500 },
+    category: { type: String, default: '', maxlength: 100 },
   },
   { timestamps: true, versionKey: false, collection: 'products' },
 );
@@ -53,6 +55,8 @@ productSchema.methods.toPublic = function toPublic() {
     available: this.available,
     inStock: this.available > 0,
     isActive: this.isActive,
+    imageUrl: this.imageUrl ?? '',
+    category: this.category ?? '',
   };
 };
 

@@ -274,26 +274,55 @@ export default function CatalogPage({ onGoToCart }) {
           const quantity = quantities[product.id] ?? 1;
           return (
             <article className="product-card" key={product.id}>
-              <div className="tile" style={productTileStyle(product.sku)}>
-                <span aria-hidden="true">{monogram(product.name)}</span>
-                <span className="tile__sku">{product.sku}</span>
-                {!product.inStock ? (
-                  <span className="tile__badge">
-                    <Badge tone="danger" size="sm">
-                      Unavailable
-                    </Badge>
-                  </span>
-                ) : product.available <= LOW_STOCK ? (
-                  <span className="tile__badge">
-                    <Badge tone="warning" size="sm">
-                      Only {product.available} left
-                    </Badge>
-                  </span>
-                ) : null}
-              </div>
+              {product.imageUrl ? (
+                <div className="tile tile--img">
+                  <img
+                    src={product.imageUrl}
+                    alt={product.name}
+                    loading="lazy"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                  {!product.inStock ? (
+                    <span className="tile__badge">
+                      <Badge tone="danger" size="sm">
+                        Unavailable
+                      </Badge>
+                    </span>
+                  ) : product.available <= LOW_STOCK ? (
+                    <span className="tile__badge">
+                      <Badge tone="warning" size="sm">
+                        Only {product.available} left
+                      </Badge>
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="tile" style={productTileStyle(product.sku)}>
+                  <span aria-hidden="true">{monogram(product.name)}</span>
+                  <span className="tile__sku">{product.sku}</span>
+                  {!product.inStock ? (
+                    <span className="tile__badge">
+                      <Badge tone="danger" size="sm">
+                        Unavailable
+                      </Badge>
+                    </span>
+                  ) : product.available <= LOW_STOCK ? (
+                    <span className="tile__badge">
+                      <Badge tone="warning" size="sm">
+                        Only {product.available} left
+                      </Badge>
+                    </span>
+                  ) : null}
+                </div>
+              )}
 
               <div className="product-card__body">
                 <div>
+                  {product.category ? (
+                    <p className="text-subtle" style={{ fontSize: 'var(--fs-xs)', marginBottom: 'var(--sp-1)' }}>
+                      {product.category}
+                    </p>
+                  ) : null}
                   {/* h2, not h3: with the page name in the top bar this is the
                       first heading level below h1, and skipping a level is the
                       one heading mistake assistive tech actually reports. */}
@@ -346,6 +375,7 @@ export default function CatalogPage({ onGoToCart }) {
           );
         })}
       </div>
+
 
       {totalPages > 1 ? (
         <Card style={{ marginTop: 'var(--sp-5)' }}>

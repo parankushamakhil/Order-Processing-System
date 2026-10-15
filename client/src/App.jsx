@@ -72,6 +72,15 @@ function Sidebar({ route, navigate, tabs, user, isAdmin, onSignOut, onShowShortc
         },
         { type: 'separator' },
         {
+          id: 'switch-account',
+          label: 'Switch account',
+          icon: UserIcon,
+          onSelect: () => {
+            onSignOut();
+            navigate('signin');
+          },
+        },
+        {
           id: 'shortcuts',
           label: 'Keyboard shortcuts',
           icon: KeyboardIcon,
@@ -194,7 +203,7 @@ function Shell() {
   useEffect(() => {
     if (loading) return;
     if (!user && (route === 'orders' || route === 'admin')) navigate('signin');
-    if (user && route === 'signin') navigate('shop');
+    if (user && route === 'signin') navigate(isAdmin ? 'admin' : 'shop');
     if (user && !isAdmin && route === 'admin') navigate('shop');
   }, [loading, user, isAdmin, route, navigate]);
 
@@ -375,7 +384,13 @@ function Shell() {
   );
 
   if (!user && route === 'signin') {
-    return <AuthPage onSignedIn={() => navigate('shop')} />;
+    return (
+      <AuthPage
+        onSignedIn={(signedInUser) => {
+          navigate(signedInUser?.role === 'admin' ? 'admin' : 'shop');
+        }}
+      />
+    );
   }
 
   const head = ROUTES[route] ?? ROUTES.shop;
@@ -499,15 +514,20 @@ function Shell() {
   );
 }
 
+function CartBridge({ children }) {
+  const { user } = useAuth();
+  return <CartProvider userId={user?.id ?? null}>{children}</CartProvider>;
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <CartProvider>
+        <CartBridge>
           <ToastProvider>
             <Shell />
           </ToastProvider>
-        </CartProvider>
+        </CartBridge>
       </AuthProvider>
     </ThemeProvider>
   );

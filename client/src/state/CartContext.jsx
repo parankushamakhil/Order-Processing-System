@@ -1,11 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const CartContext = createContext(null);
-const STORAGE_KEY = 'ops.cart';
 
-function readStored() {
+/**
+ * Returns a per-user storage key so that carts are never shared between
+ * different accounts or a logged-out guest and a signed-in customer.
+ * guest cart lives under 'ops.cart:guest'.
+ */
+function storageKey(userId) {
+  return userId ? `ops.cart:${userId}` : 'ops.cart:guest';
+}
+
+function readStored(userId) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(userId));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -31,14 +39,22 @@ export const PAYMENT_SCENARIOS = [
   { token: 'tok_random', label: 'Random (flaky)', detail: 'Simulates intermittent network/gateway degradation.' },
 ];
 
-export function CartProvider({ children }) {
-  const [lines, setLines] = useState(readStored);
+export function CartProvider({ userId, children }) {
+  const [lines, setLines] = useState(() => readStored(userId));
   const [discountCode, setDiscountCode] = useState(null);
   const [paymentToken, setPaymentToken] = useState('tok_success');
 
+  // When the user changes (login / logout / switch account) reload the
+  // correct cart from storage and reset discount + token.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
-  }, [lines]);
+    setLines(readStored(userId));
+    setDiscountCode(null);
+    setPaymentToken('tok_success');
+  }, [userId]);
+
+  useEffect(() => {
+    localStorage.setItem(storageKey(userId), JSON.stringify(lines));
+  }, [lines, userId]);
 
   const add = useCallback((product, quantity = 1) => {
     setLines((current) => {
