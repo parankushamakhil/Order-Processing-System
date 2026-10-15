@@ -1,4 +1,5 @@
 import { AppError, CheckoutInProgressError, NotFoundError, RateLimitedError } from '../errors/index.js';
+import { isReplicaSetError } from '../db/connect.js';
 
 export function notFoundHandler(req, res, next) {
   next(new NotFoundError('ROUTE_NOT_FOUND', `No route matches ${req.method} ${req.path}`));
@@ -85,6 +86,27 @@ export function errorHandler(err, req, res, next) {
       error: {
         code: 'INVARIANT_VIOLATION',
         message: 'The write was rejected by a database invariant',
+        retryable: false,
+        requestId,
+      },
+    });
+  }
+
+  // Replica-set requirement violated at runtime (e.g. Atlas tier downgrade, or a
+  // developer pointing at a standalone mongod). The server cannot serve checkout
+  // until this is resolved; 503 is more accurate than 500 and the code tells the
+  // operator exactly what is wrong.
+  if (isReplicaSetError(err)) {
+    req.log?.error('transaction attempted against a non-replica-set MongoDB', {
+      error: err.message,
+    });
+    return res.status(503).json({
+      error: {
+        code: 'REPLICA_SET_REQUIRED',
+        message:
+          'This operation requires a MongoDB replica set. ' +
+          'Locally: run `npm run dev:db`. ' +
+          'In production: use MongoDB Atlas or start mongod with --replSet.',
         retryable: false,
         requestId,
       },

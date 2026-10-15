@@ -1102,3 +1102,53 @@
 .user-card--button[aria-expanded='true'] .user-card__chevron {
   transform: rotate(180deg);
 }
+
+/* --- Operations console --------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.pager__label,
+.pager__page {
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The whole row is the control, so the click target matches what the eye reads
+   as one line of the list. */
+.status-row {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.status-row:hover .totals__label {
+  color: var(--text);
+}
+
+.table-wrap--scrolled {
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+/* A deactivated product stays listed — it still holds counters and can be
+   reactivated — but reads as out of play without losing legibility. */
+.table tbody tr.is-muted td {
+  opacity: 0.6;
+}
+
+.table tbody tr.is-muted:hover td {
+  opacity: 1;
+}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { config } from '../config/index.js';
+import { ALL_STATUSES } from '../domain/orderStatus.js';
 import { DISCOUNT_CODES } from '../domain/pricing.js';
 import { PAYMENT_TOKENS } from '../services/payments/index.js';
 
@@ -91,6 +92,22 @@ export const productListQuerySchema = z
 
 export const orderListQuerySchema = z
   .object({ status: z.string().max(40).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) })
+  .strict();
+
+/**
+ * The admin order list.
+ *
+ * `status` is an enum rather than a free string, so a typo fails loudly instead
+ * of silently returning an empty page — the same reasoning as the product list.
+ * `q` searches the order number or the customer who placed it.
+ */
+export const adminOrderListQuerySchema = z
+  .object({
+    status: z.enum(ALL_STATUSES).optional(),
+    q: z.string().max(200).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(config.MAX_PAGE_SIZE).default(25),
+  })
   .strict();
 
 export const webhookSchema = z

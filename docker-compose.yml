@@ -64,11 +64,14 @@ services:
       PORT: '4000'
       SERVE_CLIENT: 'true'
       MONGODB_URI: mongodb://mongo:27017/orders?replicaSet=rs0
+      # SECURITY: override these before any internet-facing use.
+      # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
       JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-please}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-compose-webhook-secret}
       LOG_LEVEL: info
-      # Give the demo's open orders a longer horizon than the 15-minute
-      # reservation TTL so "awaiting payment" is still visible while you look.
+      # Extended from the default 15 min so seed:demo orders remain in
+      # "awaiting payment" long enough to be visible while exploring the UI.
+      # Remove this override (or set it to 900000) for a production-like TTL.
       RESERVATION_TTL_MS: '3600000'
     ports:
       - '4000:4000'

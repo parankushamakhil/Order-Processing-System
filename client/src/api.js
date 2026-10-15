@@ -66,7 +66,15 @@ export const api = {
 
   reconcile: () => apiFetch('/api/admin/inventory/reconcile'),
   sweep: () => apiFetch('/api/admin/inventory/sweep', { method: 'POST' }),
+  refundObligations: () => apiFetch('/api/admin/inventory/refund-obligations'),
   concurrencyLab: (body) =>
     apiFetch('/api/admin/concurrency-lab', { method: 'POST', body }),
+
+  adminOrders: (query = '') => apiFetch(`/api/admin/orders${query}`),
+  adminOrder: (id) => apiFetch(`/api/admin/orders/${id}`),
   cancelOrder: (id) => apiFetch(`/api/admin/orders/${id}/cancel`, { method: 'POST' }),
+  reconcilePayment: (id) =>
+    apiFetch(`/api/admin/orders/${id}/reconcile-payment`, { method: 'POST' }),
+  refundPayment: (orderId) =>
+    apiFetch(`/api/admin/payments/${orderId}/refund`, { method: 'POST' }),
 };

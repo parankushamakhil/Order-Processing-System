@@ -28,7 +28,16 @@ const replSet = await MongoMemoryReplSet.create({
   },
 });
 
-const uri = replSet.getUri();
+const baseUri = replSet.getUri();
+
+// MongoMemoryReplSet.getUri() returns the base URI without a database path
+// (e.g. mongodb://127.0.0.1:PORT/?replicaSet=testset). Without the explicit
+// /orders path the server and every seed script each land in the default 'test'
+// database — they work, but they are all talking to the wrong place.
+const url = new URL(baseUri);
+url.pathname = '/orders';
+const uri = url.toString();
+
 fs.writeFileSync(URI_FILE, uri, 'utf8');
 
 process.stdout.write(`\nDEV MONGO READY\nURI_FILE=${URI_FILE}\nURI=${uri}\n\n`);

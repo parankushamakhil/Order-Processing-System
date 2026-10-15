@@ -6,7 +6,17 @@ import { startReaper, stopReaper } from './services/expiry.service.js';
 
 const app = createApp();
 
-await connectDb();
+try {
+  await connectDb();
+} catch (err) {
+  // Startup errors are already enriched with operator hints inside connectDb().
+  // Log clearly and exit non-zero so the platform restarts the process (or
+  // stops retrying a misconfiguration that will never fix itself).
+  logger.error('startup failed: could not connect to the database', {
+    error: err.message,
+  });
+  process.exit(1);
+}
 startReaper();
 
 const server = app.listen(config.PORT, () => {

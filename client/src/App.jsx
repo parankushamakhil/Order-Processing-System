@@ -48,7 +48,7 @@ const ROUTES = {
   shop: { title: 'Catalogue', meta: 'Availability is live: on hand minus reserved.' },
   cart: { title: 'Cart', meta: 'Review and place your order.' },
   orders: { title: 'Orders', meta: 'Every checkout, successful or not.' },
-  admin: { title: 'Operations', meta: 'Inventory, reconciliation and the Concurrency Lab.' },
+  admin: { title: 'Operations', meta: 'Products, orders, refunds, reconciliation and the Concurrency Lab.' },
   signin: { title: 'Sign in', meta: null },
 };
 
@@ -248,8 +248,8 @@ function Shell() {
       pages.push({
         id: 'admin',
         label: 'Operations console',
-        meta: 'Inventory, reconciliation and the Concurrency Lab',
-        keywords: 'admin inventory reconcile sweep lab concurrency oversell',
+        meta: 'Products, orders, refunds, reconciliation and the Concurrency Lab',
+        keywords: 'admin inventory products orders refunds reconcile sweep lab concurrency oversell',
         Icon: GaugeIcon,
         run: () => navigate('admin'),
       });

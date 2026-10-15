@@ -97,7 +97,7 @@ export async function checkout({ customerId, idempotencyKey, input }) {
   }
 
   try {
-    const result = await runCheckout({ customerId, items, input, record });
+    const result = await runCheckout({ customerId, items, input, record, idempotencyKey });
     return { ...result, replayed: false };
   } catch (err) {
     await finalizeFailure(record._id, err);
@@ -152,7 +152,7 @@ async function replay(doc) {
   };
 }
 
-async function runCheckout({ customerId, items, input, record, attempt = 1 }) {
+async function runCheckout({ customerId, items, input, record, idempotencyKey, attempt = 1 }) {
   // ---- Load the catalogue and price SERVER-SIDE. The client's prices are
   // ---- never read, and never trusted.
   const products = await Product.find({ _id: { $in: items.map((i) => i.productId) } }).lean();
@@ -234,7 +234,11 @@ async function runCheckout({ customerId, items, input, record, attempt = 1 }) {
     pricedLines,
     pricing,
     record,
-    idempotencyKey: input.idempotencyKey,
+    // The key travels as its own argument from `checkout()`. It is NOT read off
+    // `input`: that is the validated request body, whose strict schema has no
+    // such field, so reading it here silently wrote `null` on every order and
+    // left the forensic breadcrumb permanently empty.
+    idempotencyKey,
   });
 
   return chargeAndSettle({ order, record, paymentMethod: input.paymentMethod });

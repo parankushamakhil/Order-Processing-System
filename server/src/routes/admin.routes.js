@@ -18,6 +18,7 @@ import {
   PAYMENT_STATUS,
   Product,
 } from '../models/index.js';
+import { adminOrderListQuerySchema } from '../validation/schemas.js';
 import { checkout } from '../services/checkout.service.js';
 import { sweepExpiredReservations } from '../services/expiry.service.js';
 import { settlePaymentOutcome } from '../services/paymentSettlement.service.js';
@@ -28,6 +29,138 @@ const router = Router();
 router.use(requireAuth, requireAdmin);
 
 const idParams = z.object({ id: objectIdSchema }).strict();
+
+/** A user-supplied search term must never reach the RegExp engine raw. */
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * An order plus whoever placed it, for the admin order list.
+ *
+ * `customerId` is populated on this path, so it may be a document (normal), a
+ * raw id (not populated) or null (the customer was deleted) — all three must be
+ * survivable, because a deleted customer must not blank out the operations view.
+ */
+function toAdminOrderRow(order) {
+  const populated = order.customerId;
+  const customer =
+    populated && typeof populated === 'object' && populated.email
+      ? {
+          id: String(populated._id),
+          email: populated.email,
+          name: populated.name ?? '',
+          role: populated.role ?? 'customer',
+        }
+      : null;
+
+  return { ...order.toPublic(), customer };
+}
+
+/**
+ * The order queue.
+ *
+ * GET /api/orders is deliberately customer-scoped, so without this an operator
+ * could see aggregate counts but never the individual order they needed to act
+ * on — leaving cancel, reconcile and refund unreachable from the console even
+ * though the endpoints existed.
+ */
+router.get('/orders', validate({ query: adminOrderListQuerySchema }), async (req, res) => {
+  const { status, q, page, pageSize } = req.valid.query;
+
+  const filter = {};
+  if (status) filter.status = status;
+
+  if (q) {
+    const pattern = new RegExp(escapeRegex(q), 'i');
+    // Orders store a customer ref, not an address, so a customer match has to be
+    // resolved to ids first. Capped deliberately: an unbounded $in built from a
+    // broad search term is a slow query waiting to happen.
+    const matches = await Customer.find({ $or: [{ email: pattern }, { name: pattern }] })
+      .select('_id')
+      .limit(500)
+      .lean();
+    filter.$or = [
+      { orderNumber: pattern },
+      { customerId: { $in: matches.map((c) => c._id) } },
+    ];
+  }
+
+  const [orders, total] = await Promise.all([
+    Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .populate({ path: 'customerId', select: 'email name role' }),
+    Order.countDocuments(filter),
+  ]);
+
+  res.json({
+    data: {
+      items: orders.map(toAdminOrderRow),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    },
+  });
+});
+
+/**
+ * One order in full: the financial record, its transition history, and the two
+ * side-records that explain a retried or failed checkout — the charge attempts
+ * and the idempotency claims. Those are what make a duplicate or an interrupted
+ * checkout auditable after the fact instead of merely asserted.
+ */
+router.get('/orders/:id', validate({ params: idParams }), async (req, res) => {
+  const { id } = req.valid.params;
+
+  const order = await Order.findById(id).populate({
+    path: 'customerId',
+    select: 'email name role',
+  });
+  if (!order) throw new NotFoundError('ORDER_NOT_FOUND', 'Order not found');
+
+  const [attempts, claims] = await Promise.all([
+    PaymentAttempt.find({ orderId: order._id }).sort({ createdAt: 1 }).lean(),
+    IdempotencyKey.find({ orderId: order._id }).sort({ createdAt: 1 }).lean(),
+  ]);
+
+  res.json({
+    data: {
+      order: {
+        ...toAdminOrderRow(order),
+        statusHistory: order.statusHistory,
+        failureReason: order.failureReason,
+        paymentLeaseExpiresAt: order.paymentLeaseExpiresAt,
+        idempotencyKey: order.idempotencyKey,
+      },
+      paymentAttempts: attempts.map((a) => ({
+        id: String(a._id),
+        provider: a.provider,
+        status: a.status,
+        amountMinor: a.amountMinor,
+        currency: a.currency,
+        providerRef: a.providerRef,
+        providerCode: a.providerCode,
+        providerMessage: a.providerMessage,
+        latencyMs: a.latencyMs,
+        attempts: a.attempts,
+        createdAt: a.createdAt,
+      })),
+      idempotencyClaims: claims.map((c) => ({
+        id: String(c._id),
+        key: c.key,
+        endpoint: c.endpoint,
+        status: c.status,
+        attempts: c.attempts,
+        takeoverCount: c.takeoverCount,
+        responseStatusCode: c.response?.statusCode ?? null,
+        leaseExpiresAt: c.leaseExpiresAt,
+        expiresAt: c.expiresAt,
+        createdAt: c.createdAt,
+      })),
+    },
+  });
+});
 
 router.get('/inventory/reconcile', async (req, res) => {
   res.json({ data: await reconciliationReport() });

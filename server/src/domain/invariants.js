@@ -161,7 +161,9 @@ export async function reconciliationReport() {
   const [problems, refundObligations, products, orders] = await Promise.all([
     checkInvariants(),
     getRefundObligations(),
-    Product.find().select('sku name onHand reserved available isActive').lean(),
+    Product.find()
+      .select('sku name description priceMinor onHand reserved available isActive')
+      .lean(),
     Order.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
   ]);
 
@@ -169,10 +171,16 @@ export async function reconciliationReport() {
     consistent: problems.length === 0,
     problems,
     refundObligations,
+    // Price and description come along deliberately: the operations console is
+    // the one place that needs counters AND catalogue fields together, and
+    // `Product.toPublic()` hides onHand/reserved from shoppers by design. One
+    // snapshot also means the table and the KPI tiles can never disagree.
     inventory: products.map((p) => ({
       productId: String(p._id),
       sku: p.sku,
       name: p.name,
+      description: p.description ?? '',
+      priceMinor: p.priceMinor,
       onHand: p.onHand,
       reserved: p.reserved,
       available: p.available,
