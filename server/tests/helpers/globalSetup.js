@@ -25,11 +25,20 @@ export default async function globalSetup() {
     replSet: { count: 1, storageEngine: 'wiredTiger' },
   });
 
-  const uri = replSet.getUri();
+  const baseUri = replSet.getUri();
+
+  // MongoMemoryReplSet.getUri() returns the base URI without a database path
+  // (e.g. mongodb://127.0.0.1:PORT/?replicaSet=testset). Without an explicit
+  // /dbname the connectDb guard rejects it with "MONGODB_URI has no database
+  // name". Use 'test' — the standard in-memory test database name.
+  const url = new URL(baseUri);
+  url.pathname = '/test';
+  const uri = url.toString();
+
   fs.writeFileSync(URI_FILE, uri, 'utf8');
 
   // Prove transactions work before any test relies on them.
-  await mongoose.connect(uri, { serverSelectionTimeoutMS: 20_000 });
+  await mongoose.connect(baseUri, { serverSelectionTimeoutMS: 20_000 });
   const Probe = mongoose.models.Probe ?? mongoose.model('Probe', new mongoose.Schema({ ok: Boolean }));
   const session = await mongoose.startSession();
   try {
