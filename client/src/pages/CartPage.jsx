@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BagIcon, CartIcon, CheckIcon, ShieldIcon, TrashIcon } from '../components/icons.jsx';
+import { BagIcon, CartIcon, ShieldIcon, TrashIcon } from '../components/icons.jsx';
 import { useToast } from '../components/Toast.jsx';
 import {
   Alert,
@@ -8,17 +8,16 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Disclosure,
   EmptyState,
   SelectField,
   Stepper,
   monogram,
   productTileStyle,
 } from '../components/ui.jsx';
-import { describeKeyState, useCheckout } from '../hooks/useCheckout.js';
+import { useCheckout } from '../hooks/useCheckout.js';
 import { formatMinor } from '../lib/format.js';
 import { useAuth } from '../state/AuthContext.jsx';
-import { PAYMENT_SCENARIOS, useCart } from '../state/CartContext.jsx';
+import { useCart } from '../state/CartContext.jsx';
 
 /** Mirrors the server's rules so the buyer sees a figure before committing. */
 const DISCOUNTS = {
@@ -95,66 +94,6 @@ function explainError(err) {
   }
 }
 
-const STOCK_STEP_FAILURES = new Set([
-  'OUT_OF_STOCK',
-  'PRODUCT_NOT_FOUND',
-  'PRICE_CHANGED',
-  'VALIDATION_ERROR',
-  'IDEMPOTENCY_KEY_REUSE',
-  'IDEMPOTENCY_KEY_REQUIRED',
-]);
-
-function CheckoutSteps({ phase, failedCode }) {
-  const paid = phase === 'paid';
-  const pending = phase === 'pending';
-  const failed = phase === 'failed';
-  const stockFailed = failed && STOCK_STEP_FAILURES.has(failedCode);
-
-  const steps = [
-    {
-      title: 'Cart priced',
-      detail: 'Prices are read from the catalogue, never from the browser.',
-      state: phase === 'idle' ? 'todo' : 'done',
-    },
-    {
-      title: 'Stock reserved',
-      detail: 'A conditional update moves units to reserved. All lines or none.',
-      state:
-        phase === 'idle' ? 'todo' : stockFailed ? 'failed' : 'done',
-    },
-    {
-      title: 'Payment authorised',
-      detail: 'Charged outside the transaction, so a retry cannot charge twice.',
-      state: paid ? 'done' : pending ? 'active' : failed && !stockFailed ? 'failed' : 'todo',
-    },
-    {
-      title: 'Order confirmed',
-      detail: 'The hold converts to a sale and the idempotency key is spent.',
-      state: paid ? 'done' : 'todo',
-    },
-  ];
-
-  return (
-    <div className="steps">
-      {steps.map((step) => (
-        <div
-          className={`step step--${step.state}`}
-          key={step.title}
-          aria-current={step.state === 'active' ? 'step' : undefined}
-        >
-          <span className="step__marker" aria-hidden="true">
-            {step.state === 'done' ? <CheckIcon size={11} strokeWidth={3} /> : null}
-          </span>
-          <span className="step__text">
-            <span className="step__title">{step.title}</span>
-            <span className="step__detail">{step.detail}</span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function CartPage({ onBrowse }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -163,28 +102,14 @@ export default function CartPage({ onBrowse }) {
     subtotalMinor,
     discountCode,
     setDiscountCode,
-    paymentToken,
-    setPaymentToken,
     setQuantity,
     remove,
     count,
-    cartFingerprint,
   } = useCart();
-  const { submit, busy, error, result, currentKey } = useCheckout();
+  const { submit, busy, error, result } = useCheckout();
   const [autoRetry, setAutoRetry] = useState(0);
 
   const totals = estimate(subtotalMinor, discountCode);
-  const keyState = describeKeyState(cartFingerprint);
-
-  const phase = busy
-    ? 'running'
-    : result?.pending
-      ? 'pending'
-      : result
-        ? 'paid'
-        : error
-          ? 'failed'
-          : 'idle';
 
   async function doCheckout(attempt = 0) {
     const outcome = await submit();
@@ -310,53 +235,6 @@ export default function CartPage({ onBrowse }) {
               ))}
             </CardBody>
           </Card>
-
-          <Card>
-            <CardHeader
-              title="Payment"
-              subtitle="A simulated gateway, driven deterministically by the card token."
-            />
-            <CardBody>
-              <div className="stack-sm" role="radiogroup" aria-label="Payment scenario">
-                {PAYMENT_SCENARIOS.map((scenario) => {
-                  const selected = paymentToken === scenario.token;
-                  return (
-                    <label
-                      key={scenario.token}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 'var(--sp-3)',
-                        padding: 'var(--sp-3)',
-                        border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
-                        background: selected ? 'var(--accent-soft)' : 'var(--surface)',
-                        borderRadius: 'var(--r-md)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="payment-token"
-                        value={scenario.token}
-                        checked={selected}
-                        onChange={() => setPaymentToken(scenario.token)}
-                        style={{ marginTop: 3, accentColor: 'var(--accent)' }}
-                      />
-                      <span style={{ minWidth: 0 }}>
-                        <span className="step__title">{scenario.label}</span>
-                        <span className="step__detail" style={{ display: 'block' }}>
-                          {scenario.detail}
-                        </span>
-                      </span>
-                      <span className="mono" style={{ marginLeft: 'auto', color: 'var(--text-subtle)' }}>
-                        {scenario.token}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </CardBody>
-          </Card>
         </div>
 
         <div className="stack">
@@ -426,167 +304,128 @@ export default function CartPage({ onBrowse }) {
                 </div>
               </CardBody>
             </Card>
-
-            <Disclosure summary="Checkout details">
-              <div className="stack-sm">
-                <KeyLine k="Idempotency key" v={currentKey ?? 'issued on first attempt'} />
-                <KeyLine
-                  k="Key state"
-                  v={
-                    keyState.state === 'reused'
-                      ? 'reused — this retry cannot double-charge'
-                      : keyState.state === 'stale'
-                        ? 'stale — the cart changed, a new key will be issued'
-                        : 'none yet'
-                  }
-                />
-                <KeyLine k="Payment token" v={paymentToken} />
-              </div>
-              <p className="text-subtle" style={{ fontSize: 'var(--fs-xs)', marginTop: 10 }}>
-                A key that changes on every click protects nothing; a key that never changes blocks a
-                legitimate second purchase. It is bound to a fingerprint of the cart.
-              </p>
-            </Disclosure>
           </div>
         </div>
       </div>
 
-      <div className="stack" style={{ marginTop: 'var(--sp-5)' }}>
-        <Card>
-          <CardHeader
-            title="What happens when you pay"
-            subtitle="One request, four states the buyer can see."
-          />
-          <CardBody>
-            <CheckoutSteps phase={phase} failedCode={error?.code} />
-          </CardBody>
-        </Card>
+      {result || error ? (
+        <div className="stack" style={{ marginTop: 'var(--sp-5)' }}>
+          {result ? (
+            <Card>
+              <CardHeader
+                title={result.pending ? 'Payment outcome unknown' : 'Order confirmed'}
+                subtitle={result.order.orderNumber}
+                actions={
+                  <>
+                    {result.replayed ? <Badge tone="warning">Replayed</Badge> : null}
+                    <Badge tone={result.pending ? 'warning' : 'success'} dot>
+                      {result.pending ? 'Awaiting provider' : 'Paid'}
+                    </Badge>
+                  </>
+                }
+              />
+              <CardBody>
+                {result.replayed ? (
+                  <Alert tone="info" title="Nothing was executed twice">
+                    This response came from the idempotency record, so the original result was replayed
+                    rather than the order being created again.
+                  </Alert>
+                ) : null}
+                {result.pending ? (
+                  <Alert tone="warning" title="The gateway accepted the charge and went silent">
+                    The hold is still in place. The outcome will be resolved by the provider webhook, or
+                    the stock will be released when the reservation lapses. Track it on the Orders page.
+                  </Alert>
+                ) : null}
+                <div className="totals totals--grand" style={{ marginTop: 'var(--sp-4)' }}>
+                  <span>{result.pending ? 'Authorised (not yet settled)' : 'Charged'}</span>
+                  <span className="totals__value">
+                    {formatMinor(result.order.pricing.totalMinor)}
+                  </span>
+                </div>
+                <div className="cluster" style={{ marginTop: 'var(--sp-4)' }}>
+                  <Button variant="default" icon={BagIcon} onClick={onBrowse}>
+                    Continue shopping
+                  </Button>
+                </div>
+              </CardBody>
+            </Card>
+          ) : null}
 
-        {result ? (
-          <Card>
-            <CardHeader
-              title={result.pending ? 'Payment outcome unknown' : 'Order confirmed'}
-              subtitle={result.order.orderNumber}
-              actions={
-                <>
-                  {result.replayed ? <Badge tone="warning">Replayed</Badge> : null}
-                  <Badge tone={result.pending ? 'warning' : 'success'} dot>
-                    {result.pending ? 'Awaiting provider' : 'Paid'}
+          {error ? (
+            <Card>
+              <CardHeader
+                title={explainError(error).title}
+                subtitle={`HTTP ${error.status} · ${error.code}${error.retryable ? ' · retryable' : ' · not retryable'}`}
+                actions={
+                  <Badge tone={error.retryable ? 'warning' : 'danger'}>
+                    {error.retryable ? 'Safe to retry' : 'Needs a fix'}
                   </Badge>
-                </>
-              }
-            />
-            <CardBody>
-              {result.replayed ? (
-                <Alert tone="info" title="Nothing was executed twice">
-                  This response came from the idempotency record, so the original result was replayed
-                  rather than the order being created again.
+                }
+              />
+              <CardBody>
+                <Alert tone={error.retryable ? 'warning' : 'danger'} icon={false}>
+                  <p>{explainError(error).summary}</p>
+                  {explainError(error).retry ? <p>{explainError(error).retry}</p> : null}
                 </Alert>
-              ) : null}
-              {result.pending ? (
-                <Alert tone="warning" title="The gateway accepted the charge and went silent">
-                  The hold is still in place. The outcome will be resolved by the provider webhook, or
-                  the stock will be released when the reservation lapses. Track it on the Orders page.
-                </Alert>
-              ) : null}
-              <div className="totals totals--grand" style={{ marginTop: 'var(--sp-4)' }}>
-                <span>{result.pending ? 'Authorised (not yet settled)' : 'Charged'}</span>
-                <span className="totals__value">
-                  {formatMinor(result.order.pricing.totalMinor)}
-                </span>
-              </div>
-              <div className="cluster" style={{ marginTop: 'var(--sp-4)' }}>
-                <Button variant="default" icon={BagIcon} onClick={onBrowse}>
-                  Continue shopping
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        ) : null}
 
-        {error ? (
-          <Card>
-            <CardHeader
-              title={explainError(error).title}
-              subtitle={`HTTP ${error.status} · ${error.code}${error.retryable ? ' · retryable' : ' · not retryable'}`}
-              actions={
-                <Badge tone={error.retryable ? 'warning' : 'danger'}>
-                  {error.retryable ? 'Safe to retry' : 'Needs a fix'}
-                </Badge>
-              }
-            />
-            <CardBody>
-              <Alert tone={error.retryable ? 'warning' : 'danger'} icon={false}>
-                <p>{explainError(error).summary}</p>
-                {explainError(error).retry ? <p>{explainError(error).retry}</p> : null}
-              </Alert>
-
-              {error.code === 'OUT_OF_STOCK' && error.details?.items?.length ? (
-                <div className="table-wrap" style={{ marginTop: 'var(--sp-4)' }}>
-                  <table className="table table--hover">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th className="is-numeric">Requested</th>
-                        <th className="is-numeric">Available now</th>
-                        <th>Reason</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {error.details.items.map((item) => (
-                        <tr key={item.productId}>
-                          <td className="table__primary">{item.sku ?? item.productId}</td>
-                          <td className="is-numeric">{item.requested}</td>
-                          <td className="is-numeric">{item.available}</td>
-                          <td className="text-muted">
-                            {(item.reason ?? '').replace(/_/g, ' ') || '—'}
-                          </td>
+                {error.code === 'OUT_OF_STOCK' && error.details?.items?.length ? (
+                  <div className="table-wrap" style={{ marginTop: 'var(--sp-4)' }}>
+                    <table className="table table--hover">
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th className="is-numeric">Requested</th>
+                          <th className="is-numeric">Available now</th>
+                          <th>Reason</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-
-              {error.code === 'PRICE_CHANGED' && error.details?.pricing ? (
-                <div className="stack-sm" style={{ marginTop: 'var(--sp-4)' }}>
-                  <div className="totals totals--grand">
-                    <span>Authoritative total</span>
-                    <span className="totals__value">
-                      {formatMinor(error.details.pricing.totalMinor)}
-                    </span>
+                      </thead>
+                      <tbody>
+                        {error.details.items.map((item) => (
+                          <tr key={item.productId}>
+                            <td className="table__primary">{item.sku ?? item.productId}</td>
+                            <td className="is-numeric">{item.requested}</td>
+                            <td className="is-numeric">{item.available}</td>
+                            <td className="text-muted">
+                              {(item.reason ?? '').replace(/_/g, ' ') || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              <div className="cluster" style={{ marginTop: 'var(--sp-4)' }}>
-                <Button
-                  variant="primary"
-                  loading={busy}
-                  onClick={() => doCheckout(0)}
-                  disabled={!error.retryable}
-                >
-                  {error.retryable ? 'Try again' : 'Fix the cart first'}
-                </Button>
-                <Button variant="default" icon={BagIcon} onClick={onBrowse}>
-                  Back to catalogue
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        ) : null}
-      </div>
+                {error.code === 'PRICE_CHANGED' && error.details?.pricing ? (
+                  <div className="stack-sm" style={{ marginTop: 'var(--sp-4)' }}>
+                    <div className="totals totals--grand">
+                      <span>Authoritative total</span>
+                      <span className="totals__value">
+                        {formatMinor(error.details.pricing.totalMinor)}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="cluster" style={{ marginTop: 'var(--sp-4)' }}>
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    onClick={() => doCheckout(0)}
+                    disabled={!error.retryable}
+                  >
+                    {error.retryable ? 'Try again' : 'Fix the cart first'}
+                  </Button>
+                  <Button variant="default" icon={BagIcon} onClick={onBrowse}>
+                    Back to catalogue
+                  </Button>
+                </div>
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
     </>
   );
 }
 
-function KeyLine({ k, v }) {
-  return (
-    <div className="totals" style={{ padding: 0 }}>
-      <span className="totals__label">{k}</span>
-      <span className="mono" style={{ color: 'var(--text)', textAlign: 'right', wordBreak: 'break-all' }}>
-        {v}
-      </span>
-    </div>
-  );
-}
