@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useCart } from '../state/CartContext.jsx';
 
@@ -45,6 +45,61 @@ export function useCheckout() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // Automated HTTP 202 polling loop when payment is pending settlement (Phase 2.3)
+  useEffect(() => {
+    if (!result?.pending || !result?.order?.id) return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_POLL_ATTEMPTS = 10;
+
+    const interval = setInterval(async () => {
+      attempts += 1;
+      try {
+        const { data } = await api.order(result.order.id);
+        const current = data?.order;
+        if (!current || cancelled) return;
+
+        if (current.status !== 'pending_payment') {
+          clearInterval(interval);
+          setResult((prev) => ({
+            ...prev,
+            order: current,
+            pending: false,
+            justSettled: true,
+          }));
+          if (current.status === 'paid') {
+            writeStored(null);
+            clear();
+          }
+          return;
+        }
+
+        if (attempts >= MAX_POLL_ATTEMPTS) {
+          clearInterval(interval);
+          setResult((prev) => ({
+            ...prev,
+            pending: false,
+            pollTimedOut: true,
+          }));
+        }
+      } catch {
+        if (attempts >= MAX_POLL_ATTEMPTS) {
+          clearInterval(interval);
+          setResult((prev) => ({
+            ...prev,
+            pending: false,
+            pollTimedOut: true,
+          }));
+        }
+      }
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [result?.pending, result?.order?.id, clear]);
+
   const keyForCart = useCallback(() => {
     const stored = readStored();
     if (stored && stored.fingerprint === cartFingerprint && stored.key) return stored.key;
@@ -88,6 +143,7 @@ export function useCheckout() {
       setBusy(false);
     }
   }, [lines, discountCode, paymentToken, cartFingerprint, keyForCart, clear]);
+
 
   return {
     submit,

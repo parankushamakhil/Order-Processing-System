@@ -323,7 +323,7 @@ export function buildCatalogue() {
     name: product.name,
     description: product.description,
     priceMinor: product.priceMinor,
-    currency: 'USD',
+    currency: 'INR',
     onHand: product.onHand,
     isActive: true,
     imageUrl: product.imageUrl,
@@ -729,7 +729,7 @@ async function main() {
       orderNumber,
       customerId: order.customer._id,
       status: order.status,
-      currency: 'USD',
+      currency: 'INR',
       items: order.items,
       pricing: order.pricing,
       payment: {
@@ -758,7 +758,7 @@ async function main() {
         // database guarantee rather than a convention.
         idempotencyKey: orderId.toString(),
         amountMinor: order.pricing.totalMinor,
-        currency: 'USD',
+        currency: 'INR',
         status: paymentStatus,
         providerRef,
         providerCode: meta.code,

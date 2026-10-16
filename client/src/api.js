@@ -73,8 +73,14 @@ export const api = {
   adminOrders: (query = '') => apiFetch(`/api/admin/orders${query}`),
   adminOrder: (id) => apiFetch(`/api/admin/orders/${id}`),
   cancelOrder: (id) => apiFetch(`/api/admin/orders/${id}/cancel`, { method: 'POST' }),
+  fulfillOrder: (id) => apiFetch(`/api/admin/orders/${id}/fulfill`, { method: 'POST' }),
+  cancelMyOrder: (id) => apiFetch(`/api/orders/${id}/cancel`, { method: 'POST' }),
   reconcilePayment: (id) =>
     apiFetch(`/api/admin/orders/${id}/reconcile-payment`, { method: 'POST' }),
-  refundPayment: (orderId) =>
-    apiFetch(`/api/admin/payments/${orderId}/refund`, { method: 'POST' }),
+  refundPayment: (orderId, { restock = false } = {}) =>
+    apiFetch(`/api/admin/payments/${orderId}/refund?restock=${Boolean(restock)}`, { method: 'POST' }),
+
+  telemetry: () => apiFetch('/api/admin/telemetry'),
+  resetTelemetry: () => apiFetch('/api/admin/telemetry/reset', { method: 'POST' }),
+  simulateChaosCrash: () => apiFetch('/api/admin/chaos/simulate-crash', { method: 'POST' }),
 };

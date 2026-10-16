@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { config } from '../../src/config/index.js';
 import { ORDER_STATUS } from '../../src/domain/orderStatus.js';
 import { Order, PaymentAttempt } from '../../src/models/index.js';
 import {
@@ -149,5 +150,45 @@ describe('wiring', () => {
     expect(allowed.status).toBe(200);
     expect(allowed.body.data.consistent).toBe(true);
     expect(allowed.body.data.inventory.length).toBe(1);
+  });
+
+  it('serves operational telemetry (JSON) and Prometheus metrics', async () => {
+    const admin = await createAdmin();
+
+    const prom = await http().get('/metrics');
+    expect(prom.status).toBe(200);
+    expect(prom.text).toContain('checkout_attempts_total');
+    expect(prom.text).toContain('transaction_retries_total');
+
+    const telemetry = await http()
+      .get('/api/admin/telemetry')
+      .set('Authorization', admin.auth);
+    expect(telemetry.status).toBe(200);
+    expect(telemetry.body.data.counters).toHaveProperty('attempts');
+    expect(telemetry.body.data.counters).toHaveProperty('retries');
+    expect(telemetry.body.data.latencies).toHaveProperty('p50');
+  });
+
+  it('increments rate_limited counter in metrics when rate limit is tripped', async () => {
+    const { auth } = await createCustomer();
+    const product = await createProduct({ priceMinor: 1000, onHand: 10 });
+
+    const originalLimit = config.CHECKOUT_RATE_LIMIT_PER_MIN;
+    config.CHECKOUT_RATE_LIMIT_PER_MIN = 2;
+    try {
+      const promises = Array.from({ length: 6 }, (_, i) =>
+        http()
+          .post('/api/checkout')
+          .set('Authorization', auth)
+          .set('Idempotency-Key', `smoke-rate-${randomUUID()}-${i}`)
+          .send(checkoutBody({ items: [{ productId: String(product._id), quantity: 1 }] })),
+      );
+      await Promise.all(promises);
+
+      const prom = await http().get('/metrics');
+      expect(prom.text).toMatch(/checkout_rejections_total\{reason="rate_limited"\} [1-9]\d*/);
+    } finally {
+      config.CHECKOUT_RATE_LIMIT_PER_MIN = originalLimit;
+    }
   });
 });

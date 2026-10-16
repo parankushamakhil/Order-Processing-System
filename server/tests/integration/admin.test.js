@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { ORDER_STATUS } from '../../src/domain/orderStatus.js';
-import { PaymentAttempt, PAYMENT_STATUS } from '../../src/models/index.js';
+import { Order, PaymentAttempt, PAYMENT_STATUS, Product } from '../../src/models/index.js';
 import {
   checkoutBody,
   checkoutRequest,
@@ -103,6 +103,46 @@ describe('Concurrency Lab', () => {
     expect(lab.finalCounters).toEqual({ onHand: 2, reserved: 0, available: 2 });
   });
 
+  it('supports fifo policy and computes fairness metrics with confirmed buyer indices', async () => {
+    const admin = await createAdmin();
+    const product = await createProduct({ priceMinor: 1000, onHand: 5 });
+
+    const response = await http()
+      .post('/api/admin/concurrency-lab')
+      .set('Authorization', admin.auth)
+      .send({ productId: String(product._id), buyers: 20, quantityPerBuyer: 1, policy: 'fifo' });
+
+    expect(response.status).toBe(200);
+    const lab = response.body.data;
+    expect(lab.tally.confirmed).toBe(5);
+    expect(lab.oversold).toBe(false);
+    expect(lab.invariantsHeld).toBe(true);
+    expect(lab.fairness).toBeDefined();
+    expect(lab.fairness.policy).toBe('fifo');
+    expect(typeof lab.fairness.gini).toBe('number');
+    expect(typeof lab.fairness.winSpread.range).toBe('number');
+    expect(Array.isArray(lab.fairness.confirmedBuyerIndices)).toBe(true);
+    expect(lab.fairness.confirmedBuyerIndices.length).toBe(5);
+  });
+
+  it('supports lottery policy and prevents overselling', async () => {
+    const admin = await createAdmin();
+    const product = await createProduct({ priceMinor: 1000, onHand: 3 });
+
+    const response = await http()
+      .post('/api/admin/concurrency-lab')
+      .set('Authorization', admin.auth)
+      .send({ productId: String(product._id), buyers: 15, quantityPerBuyer: 1, policy: 'lottery' });
+
+    expect(response.status).toBe(200);
+    const lab = response.body.data;
+    expect(lab.tally.confirmed).toBe(3);
+    expect(lab.oversold).toBe(false);
+    expect(lab.invariantsHeld).toBe(true);
+    expect(lab.fairness.policy).toBe('lottery');
+    expect(lab.fairness.confirmedBuyerIndices.length).toBe(3);
+  });
+
   it('validates its input', async () => {
     const admin = await createAdmin();
     const product = await createProduct({ onHand: 5 });
@@ -189,10 +229,70 @@ describe('operations endpoints', () => {
     const attempt = await PaymentAttempt.findOne({ idempotencyKey: String(orderId) });
     expect(attempt.status).toBe(PAYMENT_STATUS.REFUNDED);
 
+    const updatedOrder = await Order.findById(orderId);
+    expect(updatedOrder.payment.status).toBe('refunded');
+    expect(updatedOrder.statusHistory.some((h) => h.reason === 'payment_refunded')).toBe(true);
+
     // Idempotent: a second refund does not issue another one.
     const second = await http()
       .post(`/api/admin/payments/${orderId}/refund`)
       .set('Authorization', admin.auth);
     expect(second.body.data.refund.alreadyRefunded).toBe(true);
   });
+
+  it('refunds an order and restocks units atomically when restock=true', async () => {
+    const admin = await createAdmin();
+    const { auth } = await createCustomer();
+    const product = await createProduct({ priceMinor: 1000, onHand: 5 });
+
+    const paid = await checkoutRequest({
+      auth,
+      key: randomUUID(),
+      body: checkoutBody({ items: [{ productId: String(product._id), quantity: 2 }] }),
+    });
+    const orderId = paid.body.data.order.id;
+
+    let p = await Product.findById(product._id);
+    expect(p.onHand).toBe(3);
+    expect(p.available).toBe(3);
+
+    const refundRes = await http()
+      .post(`/api/admin/payments/${orderId}/refund?restock=true`)
+      .set('Authorization', admin.auth);
+    expect(refundRes.status).toBe(200);
+    expect(refundRes.body.data.restocked).toBe(true);
+
+    p = await Product.findById(product._id);
+    expect(p.onHand).toBe(5);
+    expect(p.available).toBe(5);
+
+    const updatedOrder = await Order.findById(orderId);
+    expect(updatedOrder.payment.status).toBe('refunded');
+    expect(
+      updatedOrder.statusHistory.some((h) => h.reason === 'payment_refunded_and_restocked'),
+    ).toBe(true);
+  });
+
+  it('simulates a mid-charge crash (chaos F5) and creates a refund obligation cleanly', async () => {
+    const admin = await createAdmin();
+    await createProduct({ onHand: 10, priceMinor: 1000 });
+
+    const response = await http()
+      .post('/api/admin/chaos/simulate-crash')
+      .set('Authorization', admin.auth);
+
+    expect(response.status).toBe(200);
+    const data = response.body.data;
+    expect(data.faultCaught).toContain('crash_after_charge');
+    expect(data.settlementLostCas).toBe(true);
+    expect(data.refundObligationRecorded).toBe(true);
+    expect(data.invariantsHeld).toBe(true);
+
+    // Clean up refund obligation by issuing the refund so the afterEach invariant check passes
+    const refundRes = await http()
+      .post(`/api/admin/payments/${data.orderId}/refund`)
+      .set('Authorization', admin.auth);
+    expect(refundRes.status).toBe(200);
+  });
 });
+

@@ -24,7 +24,7 @@ const productSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: String, default: '', maxlength: 5000 },
     priceMinor: integer(),
-    currency: { type: String, required: true, enum: ['USD'], default: 'USD' },
+    currency: { type: String, required: true, enum: ['INR'], default: 'INR' },
     onHand: { ...integer(), default: 0 },
     reserved: { ...integer(), default: 0 },
     available: { ...integer(), default: 0 },

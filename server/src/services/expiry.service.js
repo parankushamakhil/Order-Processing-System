@@ -4,6 +4,7 @@ import { release } from '../domain/inventory.js';
 import { transition } from '../domain/orderState.js';
 import { ORDER_STATUS } from '../domain/orderStatus.js';
 import { logger } from '../lib/logger.js';
+import { metrics } from '../lib/metrics.js';
 import { IdempotencyKey, IDEMPOTENCY_STATUS } from '../models/IdempotencyKey.js';
 import { Order } from '../models/Order.js';
 
@@ -91,6 +92,7 @@ export async function sweepExpiredReservations({
   }
 
   if (released > 0) {
+    metrics.inc('reservation_reclaims_total', { trigger: ids?.length ? 'lazy_demand' : 'timer_sweep' }, released);
     logger.info('released expired reservations', {
       released,
       scanned: candidates.length,

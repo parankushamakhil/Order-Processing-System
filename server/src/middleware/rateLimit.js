@@ -1,4 +1,5 @@
 import { RateLimitedError } from '../errors/index.js';
+import { metrics } from '../lib/metrics.js';
 
 /**
  * Idempotency keys protect correctness. Rate limiting protects the database
@@ -13,11 +14,13 @@ const buckets = new Map();
 
 export function rateLimit({ limit, windowMs = 60_000, keyFn }) {
   return function rateLimitMiddleware(req, res, next) {
+    const maxHits = typeof limit === 'function' ? limit() : limit;
     const key = keyFn(req);
     const now = Date.now();
     const hits = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
 
-    if (hits.length >= limit) {
+    if (hits.length >= maxHits) {
+      metrics.inc('checkout_rejections_total', { reason: 'rate_limited' });
       const retryAfterMs = windowMs - (now - hits[0]);
       buckets.set(key, hits);
       return next(new RateLimitedError(Math.max(1, retryAfterMs)));

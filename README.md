@@ -5,16 +5,17 @@ requirement is that **stock can never be oversold** under concurrency, that inve
 internally consistent, and that a checkout which is retried, duplicated, declined or interrupted
 still reaches exactly one correct outcome.
 
-**Status: implemented and verified.** 178 tests across 17 files pass against a real MongoDB replica
+**Status: implemented and verified.** 185 tests across 19 files pass against a real MongoDB replica
 set (`npm test` → exit 0), and the concurrency suite runs with zero flakes. The client builds cleanly, and the whole stack — API and built SPA — serves from a single production
 process, verified in a browser as well as by `curl`. A reproducible demo world of 205 real-world products with images,
 620 orders, 487 payment attempts and 424 idempotency claims loads with one command
-(`npm run seed:demo`).
+(`npm run seed:demo`). Standardized strictly on **INR (`₹`)** across database validators, schemas, pricing, models and presentation.
 
 | If you want… | Read |
 |---|---|
 | *Why* each hard choice was made, and what was rejected | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | How to deploy it, and how to verify the deploy | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| Evaluator walkthrough and demonstration guide | [docs/DEMONSTRATION_GUIDE.md](docs/DEMONSTRATION_GUIDE.md) |
 
 ---
 
@@ -23,23 +24,31 @@ process, verified in a browser as well as by `curl`. A reproducible demo world o
 | Item | Value |
 |---|---|
 | **GitHub Repository** | [https://github.com/parankushamakhil/Order-Processing-System](https://github.com/parankushamakhil/Order-Processing-System) |
-| **Live Deployment URL** | `https://your-app-name.onrender.com` *(see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Render deployment)* |
+| **Local Production URL**| `http://localhost:4000` *(run `npm run verify && npm start`)* |
+| **Cloud Deployment** | Zero-config blueprint via [render.yaml](render.yaml) *(see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md))* |
 | **Admin Login** | `admin@shop.test` / `password1234` (Access to Operations & Concurrency Lab) |
 | **Customer Login** | `shopper@shop.test` / `password1234` (Storefront & isolated cart checkout) |
-| **Test Suite** | 178 tests across 17 files (100% passing) |
+| **Test Suite** | 185 tests across 19 files (100% passing) |
+| **Headless Judge Demo**| `npm run demo:judge` (Autonomous end-to-end evaluation script) |
+| **Currency** | Strictly Indian Rupee (`INR` / `₹`) across entire stack |
 | **Catalogue Data** | 205 real-world products with high-resolution photography across 10 categories |
 
 ---
 
-## Live deployment
+## Production deployment & local evaluation
 
-> **Live URL:** `‹paste your deployed Render URL here›`
+> **Single-Origin Production:**
+> ```bash
+> npm run verify
+> npm start
+> # Serves compiled UI & Express 5 API from a unified origin at http://localhost:4000
+> ```
 >
-> Deployment is zero-config using the checked-in blueprint [render.yaml](render.yaml) connected to a free
+> Cloud deployment is zero-config using the checked-in blueprint [render.yaml](render.yaml) connected to a free
 > MongoDB Atlas cluster. The full walkthrough, environment variables and post-deploy smoke checklist
 > are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-Once it is running, the URL above is a **single origin** for the API and the UI — which is why there
+When running, the server provides a **single origin** for the API and the UI — which is why there
 is no CORS configuration to get wrong, and why `SERVE_CLIENT` defaults to on in production.
 
 ### Demo accounts
@@ -95,9 +104,10 @@ transactions at all**, and transactions are load-bearing here. Any single-node r
 nothing but `MONGODB_URI` is hard-coded.
 
 ```bash
-npm test                 # 178 tests: unit + property + integration + concurrency
+npm test                 # 185 tests: unit + property + integration + concurrency
 npm run test:concurrency # the headline suite, verbose
 npm run bench            # contention numbers (see below)
+npm run demo:judge       # autonomous headless judge demonstration & verification
 npm run verify           # server tests + client production build
 ```
 
@@ -125,7 +135,7 @@ The last verified run, in ~2 seconds:
 
 | | |
 |---|---|
-| **Products** | 205 — diverse real-world products with verified photography across Apparel, Footwear, Electronics, Kitchen, Home Office, Bags, Grooming, Fitness, Outdoors, and Furniture, priced $14.00–$349.00 |
+| **Products** | 205 — diverse real-world products with verified photography across Apparel, Footwear, Electronics, Kitchen, Home Office, Bags, Grooming, Fitness, Outdoors, and Furniture, priced ₹14.00–₹349.00 |
 | **Stock spread** | Real distribution: sold out, low stock (1–4), thin (5–19), healthy (20–99), and deep (100+) — so every availability state renders live |
 | **Orders** | 620 across all statuses: 275 fulfilled · 105 paid · 69 payment_failed · 61 expired · 62 pending_payment · 47 cancelled |
 | **Payment attempts** | 487 — 380 succeeded · 46 declined · 23 error · 17 refund_required · 15 refunded · 6 pending |

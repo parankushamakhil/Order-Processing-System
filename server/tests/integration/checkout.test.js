@@ -32,7 +32,7 @@ describe('POST /api/checkout — pricing', () => {
       taxMinor: 80, // 8%
       shippingMinor: 599, // below the free-shipping threshold
       totalMinor: 1679,
-      currency: 'USD',
+      currency: 'INR',
     });
   });
 

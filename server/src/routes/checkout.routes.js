@@ -20,7 +20,7 @@ router.post(
   '/',
   requireAuth,
   rateLimit({
-    limit: config.CHECKOUT_RATE_LIMIT_PER_MIN,
+    limit: () => config.CHECKOUT_RATE_LIMIT_PER_MIN,
     keyFn: (req) => `checkout:${req.auth?.customerId ?? req.ip}`,
   }),
   validate({ body: checkoutSchema }),
@@ -30,11 +30,13 @@ router.post(
 
     // Validated, not just checked: a header is untrusted input like any other.
     const idempotencyKey = idempotencyKeySchema.parse(rawKey);
+    const chaosFault = req.get('x-chaos-fault') || null;
 
     const result = await checkout({
       customerId: req.auth.customerId,
       idempotencyKey,
       input: req.valid.body,
+      chaosFault,
     });
 
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');

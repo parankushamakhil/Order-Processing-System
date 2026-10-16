@@ -3,7 +3,7 @@ export function formatMinor(minor, currency = 'INR') {
   if (minor == null) return '—';
   const sign = minor < 0 ? '-' : '';
   const abs = Math.abs(minor);
-  const symbol = currency === 'INR' || currency === 'USD' ? '₹' : `${currency} `;
+  const symbol = currency === 'INR' ? '₹' : `${currency} `;
   return `${sign}${symbol}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 

@@ -69,7 +69,7 @@ const orderSchema = new mongoose.Schema(
     orderNumber: { type: String, required: true },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
     status: { type: String, enum: ALL_STATUSES, required: true, default: ORDER_STATUS.PENDING_PAYMENT },
-    currency: { type: String, required: true, enum: ['USD'], default: 'USD' },
+    currency: { type: String, required: true, enum: ['INR'], default: 'INR' },
     items: { type: [orderItemSchema], required: true, validate: (v) => v.length > 0 },
 
     pricing: { type: pricingSchema, required: true },

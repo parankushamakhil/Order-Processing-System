@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
+import { metrics } from '../lib/metrics.js';
 
 const router = Router();
 
@@ -53,6 +54,12 @@ router.get('/readyz', async (req, res) => {
   res.status(ready ? 200 : 503).json({
     data: { ready, database: { connected, ping } },
   });
+});
+
+/** Prometheus format operational metrics (T1.1 - Live Contention Telemetry). */
+router.get('/metrics', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(metrics.toPrometheus());
 });
 
 export default router;

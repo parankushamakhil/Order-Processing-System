@@ -18,6 +18,8 @@ Load-bearing decisions in the order-processing system. Each entry states the con
 | 12 | Vitest + supertest + `MongoMemoryReplSet` | Transactions demand a replica set, even in tests |
 | 13 | No transactional outbox | Not needed at this scope; upgrade path documented |
 | 14 | Express 5 + Zod at the boundary | One source of truth for input and config |
+| 15 | Contention allocation policies (T1.3) | Layer fairness options over atomic reserve primitive |
+| 16 | Single ledger currency: strict INR | Eliminate multi-currency drift without adding unverified conversion surface |
 
 ---
 
@@ -25,7 +27,7 @@ Load-bearing decisions in the order-processing system. Each entry states the con
 
 **Context.** Orders carry prices, discounts, tax and totals. JavaScript numbers are IEEE-754 doubles.
 
-**Decision.** Every monetary value is an integer count of minor units (`priceMinor: 2499` = $24.99), with an explicit `currency` field. No monetary value is ever a float, ever enters `parseFloat`, or ever round-trips through a string.
+**Decision.** Every monetary value is an integer count of minor units (`priceMinor: 2499` = ₹24.99), with an explicit `currency` field. No monetary value is ever a float, ever enters `parseFloat`, or ever round-trips through a string.
 
 **Alternatives considered.**
 - *Floats* — rejected: `0.1 + 0.2 !== 0.3`. A total that does not equal the sum of its lines is a defect no amount of testing makes acceptable.
@@ -293,3 +295,34 @@ If it returns `null`, this actor lost the race and must not touch stock.
 **Consequences.** Validation is one narrow, replaceable layer with its own unit tests, and every 400 carries field-level detail from the same schema that typed the input. Two Express 5 details are handled explicitly: `req.body` may be `undefined` when no body is sent (the schema rejects it rather than crashing), and legacy `res` signatures are not used anywhere. Route params are treated as untrusted strings and cast explicitly — Express 5 no longer offers inline regex constraints.
 
 **Evidence.** Unit tests assert the schemas reject negative, zero and non-integer quantities, oversized carts, unknown fields, duplicate product ids, and a missing idempotency key — before any HTTP layer is involved.
+
+---
+
+## ADR-15 — Contention Allocation Policies (T1.3 Fairness)
+
+**Context.** When 200 buyers simultaneously attempt to purchase 10 units, who gets them? Standard systems let database lock-acquisition order decide ("Lock Race"). In high-demand flash sales, this creates arbitrary win clustering.
+
+**Decision.** Support explicit allocation fairness policies in the Concurrency Lab (`race`, `fifo`, `lottery`), layered strictly on top of the atomic `$inc` reserve primitive (ADR-03).
+1. `race` (Baseline): Unconstrained concurrent write competition.
+2. `fifo`: Arrival-ordered admission queue where requests are admitted in stable arrival order.
+3. `lottery`: Equal-odds randomized admission draw before checkout execution.
+
+**Alternatives considered.**
+- *Queue-backed database writer (e.g. BullMQ / Redis)* — rejected for core correctness: making fairness a hard dependency for inventory reservation adds external infrastructural points of failure. The `$inc` reserve must remain the sole, infallible correctness guarantee; fairness is an admission policy layered above it.
+- *Strict client timestamp sorting* — rejected: client clocks drift and are trivially forged. Admission ordering must be determined server-side upon arrival.
+
+**Consequences.** Fairness policies change *which* customers are admitted to checkout, but never compromise the zero-oversell invariant. Win distributions and Gini coefficients are measured across buyers to quantify allocation spread.
+
+---
+
+## ADR-16 — Single Ledger Currency: Strict INR Standardization
+
+**Context.** Prior iterations had schema enums pinned to `USD` while client formatters and demo catalogues displayed `₹` (INR), creating schema/UI drift.
+
+**Decision.** Standardize strictly on Indian Rupee (`INR` / `₹`) across models (`Product`, `Order`, `PaymentAttempt`), storage `$jsonSchema` validators, seed data, and client formatters.
+
+**Alternatives considered.**
+- *Multi-currency with client conversion* — rejected: storing multiple currencies without an authoritative FX rate feed and multi-currency ledger introduces drift and rounding arbitrage without adding genuine assessment value. Standardizing strictly on one currency across the entire stack eliminates the contradiction honestly.
+
+**Consequences.** Every monetary value is stored in minor units (paise) with `currency: 'INR'`. The client renders currency using standard `₹` formatting.
+

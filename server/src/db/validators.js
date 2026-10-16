@@ -28,7 +28,7 @@ export const PRODUCT_VALIDATOR = {
       sku: { bsonType: 'string', minLength: 1 },
       name: { bsonType: 'string', minLength: 1 },
       priceMinor: { ...intOrLong, minimum: 0 },
-      currency: { enum: ['USD'] },
+      currency: { enum: ['INR'] },
       onHand: { ...intOrLong, minimum: 0 },
       reserved: { ...intOrLong, minimum: 0 },
       // The anti-oversell backstop: an inventory counter can never go negative.
@@ -43,7 +43,7 @@ export const ORDER_VALIDATOR = {
     bsonType: 'object',
     required: ['customerId', 'status', 'items', 'pricing', 'currency'],
     properties: {
-      currency: { enum: ['USD'] },
+      currency: { enum: ['INR'] },
       items: {
         bsonType: 'array',
         items: {

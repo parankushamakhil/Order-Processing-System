@@ -22,27 +22,31 @@ SUBMISSION DETAILS
 --------------------------------------------------------------------------------
 
 Item                    Value
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
 GitHub Repository       https://github.com/parankushamakhil/Order-Processing-System
-Live Deployment URL     https://your-app-name.onrender.com (see docs/DEPLOYMENT.md for Render deployment)
+Local Production URL    http://localhost:4000 (run `npm run verify && npm start`)
+Cloud Deployment        Zero-config blueprint via render.yaml (see docs/DEPLOYMENT.md)
 Admin Login             admin@shop.test / password1234 (Access to Operations & Concurrency Lab)
 Customer Login          shopper@shop.test / password1234 (Storefront & isolated cart checkout)
-Test Suite              178 tests across 17 files (100% passing)
+Test Suite              185 tests across 19 files (100% passing)
 Catalogue Data          205 real-world products with high-resolution photography across 10 categories
 --------------------------------------------------------------------------------
 
 
 --------------------------------------------------------------------------------
-LIVE DEPLOYMENT
+PRODUCTION DEPLOYMENT & LOCAL EVALUATION
 --------------------------------------------------------------------------------
 
-Live URL: <paste your deployed Render URL here>
+Single-Origin Production:
+  npm run verify
+  npm start
+  # Serves compiled UI & Express 5 API from a unified origin at http://localhost:4000
 
-Deployment is zero-config using the checked-in blueprint render.yaml connected to a free
+Cloud deployment is zero-config using the checked-in blueprint render.yaml connected to a free
 MongoDB Atlas cluster. The full walkthrough, environment variables and post-deploy smoke checklist
 are in docs/DEPLOYMENT.md.
 
-Once it is running, the URL above is a single origin for the API and the UI — which is why there
+When running, the server provides a single origin for the API and the UI — which is why there
 is no CORS configuration to get wrong, and why SERVE_CLIENT defaults to on in production.
 
 Demo accounts:

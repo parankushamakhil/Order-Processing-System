@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BagIcon, CartIcon, ShieldIcon, TrashIcon } from '../components/icons.jsx';
 import { useToast } from '../components/Toast.jsx';
 import {
@@ -111,6 +111,15 @@ export default function CartPage({ onBrowse }) {
 
   const totals = estimate(subtotalMinor, discountCode);
 
+  useEffect(() => {
+    if (result && !result.pending && result.justSettled && result.order?.status === 'paid') {
+      toast.success(
+        `Order ${result.order?.orderNumber ?? ''} confirmed`,
+        `${formatMinor(result.order?.pricing?.totalMinor ?? 0)} charged.`,
+      );
+    }
+  }, [result, toast]);
+
   async function doCheckout(attempt = 0) {
     const outcome = await submit();
     if (outcome.ok) {
@@ -118,8 +127,8 @@ export default function CartPage({ onBrowse }) {
         toast.info('Replayed from the idempotency record', 'Nothing was executed a second time.');
       } else if (outcome.order?.status === 'pending_payment') {
         toast.warning(
-          'Payment outcome unknown',
-          'The gateway did not answer. The order is tracking until it settles.',
+          'Payment outcome pending',
+          'The gateway accepted the charge. Polling for final settlement...',
         );
       } else {
         toast.success(
@@ -331,9 +340,9 @@ export default function CartPage({ onBrowse }) {
                   </Alert>
                 ) : null}
                 {result.pending ? (
-                  <Alert tone="warning" title="The gateway accepted the charge and went silent">
-                    The hold is still in place. The outcome will be resolved by the provider webhook, or
-                    the stock will be released when the reservation lapses. Track it on the Orders page.
+                  <Alert tone="warning" title="Charge pending — polling for resolution">
+                    The inventory hold is active while the client polls for gateway settlement.
+                    Once the provider confirms, this cart will update automatically.
                   </Alert>
                 ) : null}
                 <div className="totals totals--grand" style={{ marginTop: 'var(--sp-4)' }}>

@@ -81,7 +81,7 @@ async function main() {
     await Product.create({
       ...entry,
       description: 'Seeded demo product',
-      currency: 'USD',
+      currency: 'INR',
       reserved: 0,
       available: entry.onHand,
       isActive: true,

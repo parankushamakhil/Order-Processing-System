@@ -41,9 +41,12 @@ export default function ConcurrencyLabPanel({ report, reload }) {
   const [buyers, setBuyers] = useState('200');
   const [quantity, setQuantity] = useState(1);
   const [targetStock, setTargetStock] = useState(10);
+  const [policy, setPolicy] = useState('race');
   const [lab, setLab] = useState(null);
   const [labBusy, setLabBusy] = useState(false);
   const [labError, setLabError] = useState(null);
+  const [chaosBusy, setChaosBusy] = useState(false);
+  const [chaosResult, setChaosResult] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const labStart = useRef(0);
 
@@ -93,6 +96,7 @@ export default function ConcurrencyLabPanel({ report, reload }) {
         productId: selected.productId,
         buyers: Number(buyers),
         quantityPerBuyer: Number(quantity),
+        policy,
       });
       setLab(data);
       const passed =
@@ -111,6 +115,24 @@ export default function ConcurrencyLabPanel({ report, reload }) {
     } finally {
       setLabBusy(false);
       await reload();
+    }
+  }
+
+  async function runChaosSimulation() {
+    setChaosBusy(true);
+    setChaosResult(null);
+    try {
+      const { data } = await api.simulateChaosCrash();
+      setChaosResult(data);
+      await reload();
+      toast.success(
+        'Chaos simulated: mid-charge crash handled',
+        `Reclaimed ${data.unitsReleased} held units · Refund obligation: ${data.refundObligationRecorded ? 'Tracked' : 'None'}.`,
+      );
+    } catch (err) {
+      toast.error('Chaos simulation failed', err.message);
+    } finally {
+      setChaosBusy(false);
     }
   }
 
@@ -195,6 +217,17 @@ export default function ConcurrencyLabPanel({ report, reload }) {
               </div>
             </div>
 
+            <SelectField
+              label="Allocation Policy (T1.3 Fairness)"
+              value={policy}
+              onChange={(event) => setPolicy(event.target.value)}
+              hint="Lock Race (natural contention), FIFO (arrival queue), or Lottery (random admission)."
+            >
+              <option value="race">Natural Lock Race (Default - Concurrent Herd)</option>
+              <option value="fifo">Fair FIFO Admission (Strict Arrival Order)</option>
+              <option value="lottery">Fair Lottery Draw (Equal-Odds Randomized)</option>
+            </SelectField>
+
             {selected ? (
               <Alert tone="info" icon={false}>
                 <span className="mono">
@@ -204,18 +237,30 @@ export default function ConcurrencyLabPanel({ report, reload }) {
               </Alert>
             ) : null}
 
-            <Button
-              variant="primary"
-              size="lg"
-              icon={BoltIcon}
-              loading={labBusy}
-              onClick={runLab}
-              disabled={!selected || Number(buyers) < 1}
-            >
-              {labBusy
-                ? `Firing ${buyers} checkouts… ${elapsed.toFixed(1)}s`
-                : `Fire ${buyers} concurrent checkouts`}
-            </Button>
+            <div className="cluster" style={{ gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+              <Button
+                variant="primary"
+                size="lg"
+                icon={BoltIcon}
+                loading={labBusy}
+                onClick={runLab}
+                disabled={!selected || Number(buyers) < 1}
+              >
+                {labBusy
+                  ? `Firing ${buyers} checkouts… ${elapsed.toFixed(1)}s`
+                  : `Fire ${buyers} concurrent checkouts`}
+              </Button>
+
+              <Button
+                variant="default"
+                size="lg"
+                loading={chaosBusy}
+                onClick={runChaosSimulation}
+                title="Adversarially injects process crash after payment gateway charge succeeds (Failure Mode F5)"
+              >
+                {chaosBusy ? 'Simulating crash…' : 'Simulate Mid-Charge Crash (Chaos F5)'}
+              </Button>
+            </div>
 
             {labError ? (
               <Alert tone="warning" title="Lab could not run">
@@ -225,6 +270,31 @@ export default function ConcurrencyLabPanel({ report, reload }) {
           </div>
 
           <div className="stack">
+            {chaosResult ? (
+              <Alert
+                tone={chaosResult.invariantsHeld && chaosResult.refundObligationRecorded ? 'success' : 'warning'}
+                title="Mid-Charge Crash (Failure Mode F5) Simulation"
+              >
+                <div style={{ fontSize: 'var(--fs-sm)', display: 'grid', gap: '6px' }}>
+                  <div>
+                    <strong>Simulated Fault:</strong> <code>crash_after_charge</code> (process halt immediately after gateway charge 200).
+                  </div>
+                  <div>
+                    <strong>Hold Reclamation:</strong> Reclaimed {chaosResult.unitsReleased} hold unit(s) back to inventory via reaper.
+                  </div>
+                  <div>
+                    <strong>Compensating Obligation:</strong> Refund obligation tracked ={' '}
+                    <strong>{chaosResult.refundObligationRecorded ? 'YES (Tracked in Refunds Panel)' : 'NO'}</strong>{' '}
+                    (Status CAS lost: {String(chaosResult.settlementLostCas)}).
+                  </div>
+                  <div>
+                    <strong>Database Invariants:</strong>{' '}
+                    {chaosResult.invariantsHeld ? 'All held strictly intact (zero oversell, zero stock drift).' : 'Violated.'}
+                  </div>
+                </div>
+              </Alert>
+            ) : null}
+
             {labBusy ? (
               <Card>
                 <CardBody>
@@ -319,6 +389,91 @@ export default function ConcurrencyLabPanel({ report, reload }) {
                     </tbody>
                   </table>
                 </div>
+
+                {lab.telemetry ? (
+                  <div style={{ marginTop: 'var(--sp-4)' }}>
+                    <Card>
+                      <CardHeader
+                        title="Contention Telemetry (T1.1)"
+                        subtitle={`Policy: ${(lab.policy || 'race').toUpperCase()} · Retries & Latency percentiles recorded live`}
+                      />
+                      <CardBody flush>
+                        <div className="kpi-grid" style={{ padding: 'var(--sp-3)' }}>
+                          <StatTile
+                            label="Transaction Retries"
+                            value={lab.telemetry.counters?.retries ?? 0}
+                            tone={lab.telemetry.counters?.retries > 0 ? 'warning' : 'neutral'}
+                            meta="Write conflicts retried"
+                          />
+                          <StatTile
+                            label="p50 Latency"
+                            value={`${lab.telemetry.latencies?.p50 ?? 0} ms`}
+                            tone="neutral"
+                            meta="Median checkout time"
+                          />
+                          <StatTile
+                            label="p95 Latency"
+                            value={`${lab.telemetry.latencies?.p95 ?? 0} ms`}
+                            tone="neutral"
+                            meta="Tail 95th percentile"
+                          />
+                        </div>
+                      </CardBody>
+                    </Card>
+                  </div>
+                ) : null}
+
+                {lab.fairness ? (
+                  <div style={{ marginTop: 'var(--sp-3)' }}>
+                    <Card>
+                      <CardHeader
+                        title="Contention Allocation Fairness Analytics (T1.3)"
+                        subtitle={lab.fairness.summary}
+                      />
+                      <CardBody>
+                        <div className="kpi-grid">
+                          <StatTile
+                            label="Policy Mode"
+                            value={lab.policy.toUpperCase()}
+                            tone="accent"
+                            meta="Contention Strategy"
+                          />
+                          <StatTile
+                            label="Gini Coefficient"
+                            value={String(lab.fairness.gini ?? 0)}
+                            tone={lab.fairness.gini > 0.8 ? 'warning' : 'success'}
+                            meta="0 = uniform spread, 1 = concentrated"
+                          />
+                          <StatTile
+                            label="Winner Cohort Reach"
+                            value={
+                              lab.fairness.winSpread?.range
+                                ? `IDs ${lab.fairness.winSpread.min} – ${lab.fairness.winSpread.max}`
+                                : '—'
+                            }
+                            tone="neutral"
+                            meta={`${Math.round((lab.fairness.winSpread?.spreadRatio ?? 0) * 100)}% of cohort span`}
+                          />
+                        </div>
+                      </CardBody>
+                    </Card>
+                  </div>
+                ) : null}
+
+                {lab.confirmedBuyerIndices?.length ? (
+                  <div style={{ marginTop: 'var(--sp-3)' }}>
+                    <p className="text-subtle" style={{ fontSize: 'var(--fs-xs)', marginBottom: 6 }}>
+                      Winning Buyer IDs (Fairness Allocation):
+                    </p>
+                    <div className="cluster" style={{ gap: 4, flexWrap: 'wrap' }}>
+                      {lab.confirmedBuyerIndices.map((idx) => (
+                        <Badge key={idx} tone="success">
+                          Buyer #{idx}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {lab.invariantProblems?.length > 0 ? (
                   <Alert tone="danger" title="Invariant problems after the run">

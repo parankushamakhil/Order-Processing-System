@@ -43,10 +43,17 @@ function percentile(sorted, fraction) {
 }
 
 async function resetWorld(sku, stock) {
+  const benchCustomers = await Customer.find({ email: /@bench\.local$/ }).select('_id');
+  const benchCustomerIds = benchCustomers.map((c) => c._id);
+  const benchOrders = await Order.find({ customerId: { $in: benchCustomerIds } }).select('_id');
+  const benchOrderIds = benchOrders.map((o) => o._id);
+
   await Promise.all([
-    Order.deleteMany({}),
-    PaymentAttempt.deleteMany({}),
-    IdempotencyKey.deleteMany({}),
+    Order.deleteMany({ customerId: { $in: benchCustomerIds } }),
+    PaymentAttempt.deleteMany({ orderId: { $in: benchOrderIds } }),
+    IdempotencyKey.deleteMany({
+      $or: [{ orderId: { $in: benchOrderIds } }, { key: /^bench-/ }],
+    }),
     Customer.deleteMany({ email: /@bench\.local$/ }),
   ]);
 
@@ -57,7 +64,7 @@ async function resetWorld(sku, stock) {
       name: 'Benchmark Product',
       description: 'Created by scripts/bench.mjs',
       priceMinor: 1000,
-      currency: 'USD',
+      currency: 'INR',
       onHand: stock,
       reserved: 0,
       available: stock,

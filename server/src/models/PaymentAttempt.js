@@ -28,7 +28,7 @@ const paymentAttemptSchema = new mongoose.Schema(
     provider: { type: String, required: true, default: 'simulated' },
     idempotencyKey: { type: String, required: true },
     amountMinor: { type: Number, required: true, min: 0 },
-    currency: { type: String, required: true, default: 'USD' },
+    currency: { type: String, required: true, default: 'INR' },
     status: { type: String, enum: Object.values(PAYMENT_STATUS), required: true },
     providerRef: { type: String, default: null },
     providerCode: { type: String, default: null },

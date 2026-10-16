@@ -187,7 +187,7 @@ describe('storage-layer backstop (ADR-02)', () => {
         orderNumber: 'BAD-1',
         customerId: id,
         status: 'pending_payment',
-        currency: 'USD',
+        currency: 'INR',
         items: [
           {
             productId: new mongoose.Types.ObjectId(),

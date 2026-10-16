@@ -85,7 +85,7 @@ export async function createProduct({
     name,
     description: 'A product used by the test suite',
     priceMinor,
-    currency: 'USD',
+    currency: 'INR',
     onHand,
     reserved: 0,
     // I1 holds from the very first document.
@@ -141,7 +141,7 @@ export async function createPendingOrder({
           orderNumber: `TEST-${Date.now().toString(36)}-${++seq}`,
           customerId,
           status: ORDER_STATUS.PENDING_PAYMENT,
-          currency: 'USD',
+          currency: 'INR',
           items: [
             {
               productId: product._id,

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { withTransaction } from '../db/transaction.js';
-import { release } from '../domain/inventory.js';
+import { release, restock } from '../domain/inventory.js';
 import { checkInvariants, getRefundObligations, reconciliationReport } from '../domain/invariants.js';
 import { transition } from '../domain/orderState.js';
 import { ORDER_STATUS } from '../domain/orderStatus.js';
@@ -21,9 +21,10 @@ import {
 import { adminOrderListQuerySchema } from '../validation/schemas.js';
 import { checkout } from '../services/checkout.service.js';
 import { sweepExpiredReservations } from '../services/expiry.service.js';
-import { settlePaymentOutcome } from '../services/paymentSettlement.service.js';
+import { settlePaymentOutcome, settleSuccess } from '../services/paymentSettlement.service.js';
 import { getGateway } from '../services/payments/index.js';
 import { objectIdSchema } from '../validation/schemas.js';
+import { metrics } from '../lib/metrics.js';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -170,6 +171,16 @@ router.get('/inventory/refund-obligations', async (req, res) => {
   res.json({ data: { obligations: await getRefundObligations() } });
 });
 
+/** Live operational telemetry snapshot (T1.1) */
+router.get('/telemetry', async (req, res) => {
+  res.json({ data: metrics.getSnapshot() });
+});
+
+router.post('/telemetry/reset', async (req, res) => {
+  metrics.reset();
+  res.json({ data: metrics.getSnapshot() });
+});
+
 /** Operator trigger for the reaper. It also runs on demand and on a timer. */
 router.post('/inventory/sweep', async (req, res) => {
   const result = await sweepExpiredReservations();
@@ -215,6 +226,31 @@ router.post('/orders/:id/cancel', validate({ params: idParams }), async (req, re
   res.json({ data: { order: cancelled.toPublic() } });
 });
 
+router.post('/orders/:id/fulfill', validate({ params: idParams }), async (req, res) => {
+  const { id } = req.valid.params;
+  const order = await Order.findById(id);
+  if (!order) throw new NotFoundError('ORDER_NOT_FOUND', 'Order not found');
+
+  const fulfilled = await transition(
+    id,
+    ORDER_STATUS.PAID,
+    ORDER_STATUS.FULFILLED,
+    { reason: 'order_fulfilled', actor: 'admin' },
+  );
+
+  if (!fulfilled) {
+    const current = await Order.findById(id).lean();
+    throw new AppError('Only a paid order can be marked fulfilled', {
+      code: 'ORDER_NOT_PAID',
+      status: 409,
+      details: { orderId: id, orderStatus: current?.status ?? null },
+    });
+  }
+
+  res.json({ data: { order: fulfilled.toPublic() } });
+});
+
+
 /**
  * Reconciliation poll: ask the provider what happened to a charge whose answer
  * we never received. This is the realistic resolution path for a timed-out
@@ -236,11 +272,24 @@ router.post('/orders/:id/reconcile-payment', validate({ params: idParams }), asy
   res.status(result.statusCode ?? 200).json(attachRequestId(result.body, req.id));
 });
 
+const refundQuerySchema = z
+  .object({
+    restock: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+  })
+  .strict();
+
 router.post(
   '/payments/:orderId/refund',
-  validate({ params: z.object({ orderId: objectIdSchema }).strict() }),
+  validate({
+    params: z.object({ orderId: objectIdSchema }).strict(),
+    query: refundQuerySchema,
+  }),
   async (req, res) => {
     const { orderId } = req.valid.params;
+    const { restock: shouldRestock } = req.valid.query;
     const attempt = await PaymentAttempt.findOne({ idempotencyKey: String(orderId) });
     if (!attempt) throw new NotFoundError('PAYMENT_NOT_FOUND', 'No payment attempt for this order');
 
@@ -248,12 +297,46 @@ router.post(
       return res.json({ data: { refund: { orderId, alreadyRefunded: true } } });
     }
 
+    const order = await Order.findById(orderId);
+    if (!order) throw new NotFoundError('ORDER_NOT_FOUND', 'Order not found');
+
+    // Gateway refund executes outside transaction so external side-effects are not repeated on retry
     const refund = await getGateway().refund({ orderId, amountMinor: attempt.amountMinor });
-    await PaymentAttempt.updateOne(
-      { _id: attempt._id },
-      { $set: { status: PAYMENT_STATUS.REFUNDED } },
-    );
-    return res.json({ data: { refund } });
+
+    // Database updates are committed atomically within a single transaction
+    await withTransaction(async (session) => {
+      await PaymentAttempt.updateOne(
+        { _id: attempt._id },
+        { $set: { status: PAYMENT_STATUS.REFUNDED } },
+        { session },
+      );
+
+      await Order.updateOne(
+        { _id: orderId },
+        {
+          $set: { 'payment.status': PAYMENT_STATUS.REFUNDED },
+          $push: {
+            statusHistory: {
+              from: order.status,
+              to: order.status,
+              at: new Date(),
+              reason: shouldRestock ? 'payment_refunded_and_restocked' : 'payment_refunded',
+              actor: 'admin',
+            },
+          },
+        },
+        { session },
+      );
+
+      // Return units to onHand and available if captured stock is being restocked
+      if (shouldRestock && (order.status === ORDER_STATUS.PAID || order.status === ORDER_STATUS.FULFILLED)) {
+        for (const item of order.items) {
+          await restock(item.productId, item.quantity, session);
+        }
+      }
+    });
+
+    return res.json({ data: { refund, restocked: Boolean(shouldRestock) } });
   },
 );
 
@@ -262,6 +345,7 @@ const labSchema = z
     productId: objectIdSchema,
     buyers: z.number().int().min(1).max(500).default(200),
     quantityPerBuyer: z.number().int().min(1).max(10).default(1),
+    policy: z.enum(['race', 'fifo', 'lottery']).default('race'),
   })
   .strict();
 
@@ -277,8 +361,23 @@ const labSchema = z
  * measure the HTTP stack more than the concurrency behaviour. Lab buyers are
  * inserted without password hashing, which would otherwise dominate the runtime.
  */
+function calculateGini(values) {
+  if (!values || values.length === 0) return 0;
+  const n = values.length;
+  const sorted = [...values].sort((a, b) => a - b);
+  const sum = sorted.reduce((acc, v) => acc + v, 0);
+  if (sum === 0) return 0;
+
+  let cumulativeSum = 0;
+  for (let i = 0; i < n; i++) {
+    cumulativeSum += (i + 1) * sorted[i];
+  }
+  const gini = (2 * cumulativeSum) / (n * sum) - (n + 1) / n;
+  return Math.max(0, Math.min(1, Math.round(gini * 1000) / 1000));
+}
+
 router.post('/concurrency-lab', validate({ body: labSchema }), async (req, res) => {
-  const { productId, buyers, quantityPerBuyer } = req.valid.body;
+  const { productId, buyers, quantityPerBuyer, policy } = req.valid.body;
 
   const product = await Product.findById(productId);
   if (!product) throw new NotFoundError('PRODUCT_NOT_FOUND', 'Product not found');
@@ -292,52 +391,129 @@ router.post('/concurrency-lab', validate({ body: labSchema }), async (req, res) 
   const labBuyers = await Customer.insertMany(
     Array.from({ length: buyers }, (_, i) => ({
       email: `${tag}_${i}@lab.local`,
-      name: 'Lab Buyer',
+      name: `Lab Buyer ${i + 1}`,
       passwordHash: 'scrypt$lab$not-a-real-password',
       role: 'customer',
     })),
   );
 
+  // Carry stable buyer identity (1-indexed) into all policies
+  const buyerEntries = labBuyers.map((buyer, i) => ({
+    buyer,
+    buyerNumber: i + 1,
+  }));
+
+  let admissionOrder = [...buyerEntries];
+  if (policy === 'lottery') {
+    // Randomized lottery admission order (T1.3)
+    for (let i = admissionOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [admissionOrder[i], admissionOrder[j]] = [admissionOrder[j], admissionOrder[i]];
+    }
+  }
+
   const startedAt = Date.now();
-  const settled = await Promise.allSettled(
-    labBuyers.map((buyer) =>
-      checkout({
-        customerId: buyer._id,
-        idempotencyKey: `lab-${tag}-${String(buyer._id)}`,
+  let settled;
+
+  const executeBuyer = async (entry) => {
+    try {
+      const res = await checkout({
+        customerId: entry.buyer._id,
+        idempotencyKey: `lab-${tag}-${String(entry.buyer._id)}`,
         input: {
           items: [{ productId, quantity: quantityPerBuyer }],
           paymentMethod: { type: 'card', token: 'tok_success' },
           discountCode: null,
         },
-      }),
-    ),
-  );
+      });
+      return { status: 'fulfilled', value: res, buyerNumber: entry.buyerNumber };
+    } catch (err) {
+      return { status: 'rejected', reason: err, buyerNumber: entry.buyerNumber };
+    }
+  };
+
+  if (policy === 'fifo') {
+    // Fair FIFO Admission: arrival-ordered pipeline with bounded concurrency (5 workers)
+    // Preserves arrival order while allowing concurrent database contention
+    settled = [];
+    const queue = [...admissionOrder];
+    const workers = Array.from({ length: 5 }, async () => {
+      while (queue.length > 0) {
+        const entry = queue.shift();
+        if (!entry) break;
+        const result = await executeBuyer(entry);
+        settled.push(result);
+      }
+    });
+    await Promise.all(workers);
+  } else {
+    // Simultaneous concurrent execution (natural race or randomized lottery)
+    settled = await Promise.all(admissionOrder.map((entry) => executeBuyer(entry)));
+  }
+
   const durationMs = Date.now() - startedAt;
 
   const tally = { confirmed: 0, outOfStock: 0, other: 0, otherCodes: [] };
-  for (const outcome of settled) {
+  const confirmedBuyerIndices = [];
+
+  settled.forEach((outcome) => {
     if (outcome.status === 'fulfilled') {
       const code = outcome.value.body?.error?.code;
-      if (outcome.value.statusCode === 201) tally.confirmed += 1;
-      else if (code === 'OUT_OF_STOCK') tally.outOfStock += 1;
-      else {
+      if (outcome.value.statusCode === 201) {
+        tally.confirmed += 1;
+        confirmedBuyerIndices.push(outcome.buyerNumber);
+      } else if (code === 'OUT_OF_STOCK') {
+        tally.outOfStock += 1;
+      } else {
         tally.other += 1;
         if (tally.otherCodes.length < 5) tally.otherCodes.push(code ?? `HTTP_${outcome.value.statusCode}`);
       }
     } else {
       const code = outcome.reason?.code ?? 'UNKNOWN';
-      if (code === 'OUT_OF_STOCK') tally.outOfStock += 1;
-      else {
+      if (code === 'OUT_OF_STOCK') {
+        tally.outOfStock += 1;
+      } else {
         tally.other += 1;
         if (tally.otherCodes.length < 5) tally.otherCodes.push(code);
       }
     }
+  });
+
+  // Sort confirmed buyer numbers for readability
+  confirmedBuyerIndices.sort((a, b) => a - b);
+
+  // Compute allocation fairness metrics (T1.3)
+  const unitsPerBuyer = Array(buyers).fill(0);
+  for (const bNum of confirmedBuyerIndices) {
+    if (bNum >= 1 && bNum <= buyers) {
+      unitsPerBuyer[bNum - 1] += quantityPerBuyer;
+    }
   }
 
-  // Scoped to THE BUYERS THIS RUN CREATED, not to all history for the product.
-  // An unscoped Sum counts sales made before the lab started and reports a false
-  // "oversold" — which is worse than no indicator at all, because it makes the
-  // guarantee look broken exactly when it is holding. (Found by using the UI.)
+  const gini = calculateGini(unitsPerBuyer);
+  const minBuyer = confirmedBuyerIndices.length > 0 ? Math.min(...confirmedBuyerIndices) : 0;
+  const maxBuyer = confirmedBuyerIndices.length > 0 ? Math.max(...confirmedBuyerIndices) : 0;
+  const spreadRange = confirmedBuyerIndices.length > 0 ? maxBuyer - minBuyer + 1 : 0;
+  const spreadRatio = buyers > 0 ? Math.round((spreadRange / buyers) * 100) / 100 : 0;
+
+  const fairness = {
+    policy,
+    gini,
+    confirmedBuyerIndices: confirmedBuyerIndices.slice(0, 50),
+    winSpread: {
+      min: minBuyer,
+      max: maxBuyer,
+      range: spreadRange,
+      spreadRatio,
+    },
+    summary:
+      policy === 'fifo'
+        ? 'FIFO Admission: allocation concentrated at front of arrival queue (low spread).'
+        : policy === 'lottery'
+          ? 'Lottery Draw: equal-odds randomized admission dispersed across cohort (wide spread).'
+          : 'Natural Lock Race: allocation determined by database write-lock acquisition.',
+  };
+
   const labBuyerIds = labBuyers.map((buyer) => buyer._id);
 
   const [after, problems, soldAgg] = await Promise.all([
@@ -364,10 +540,13 @@ router.post('/concurrency-lab', validate({ body: labSchema }), async (req, res) 
       sku: product.sku,
       buyers,
       quantityPerBuyer,
+      policy,
+      fairness,
       initialAvailable,
       expectedConfirmed,
       durationMs,
       tally,
+      confirmedBuyerIndices: confirmedBuyerIndices.slice(0, 50),
       finalCounters: {
         onHand: after.onHand,
         reserved: after.reserved,
@@ -378,7 +557,86 @@ router.post('/concurrency-lab', validate({ body: labSchema }), async (req, res) 
       oversold: soldQuantity > initialAvailable,
       invariantsHeld: problems.length === 0,
       invariantProblems: problems,
+      telemetry: metrics.getSnapshot(),
       note: 'Driven through the checkout service directly (bypasses HTTP) so the measurement reflects concurrency behaviour rather than the loopback stack.',
+    },
+  });
+});
+
+/**
+ * Live Chaos Injection Endpoint (T1.2).
+ * Simulates a mid-charge crash (F5), proves hold reclamation, and demonstrates
+ * detection of the refund obligation in one click.
+ */
+router.post('/chaos/simulate-crash', async (req, res) => {
+  const product = await Product.findOne({ isActive: true, available: { $gte: 2 } });
+  if (!product) throw new NotFoundError('PRODUCT_NOT_FOUND', 'Need at least one active product with stock >= 2');
+
+  let buyer = await Customer.findOne({ role: 'customer' });
+  if (!buyer && req.auth?.customerId) {
+    buyer = await Customer.findById(req.auth.customerId);
+  }
+  if (!buyer) throw new NotFoundError('BUYER_NOT_FOUND', 'Need at least one customer or admin user');
+  const chaosKey = `chaos-live-${Date.now()}`;
+
+  let faultCaught = null;
+  try {
+    await checkout({
+      customerId: String(buyer._id),
+      idempotencyKey: chaosKey,
+      input: {
+        items: [{ productId: String(product._id), quantity: 1 }],
+        paymentMethod: { type: 'card', token: 'tok_success' },
+        discountCode: null,
+      },
+      chaosFault: 'crash_after_charge',
+    });
+  } catch (err) {
+    faultCaught = err.message;
+  }
+
+  const order = await Order.findOne({ idempotencyKey: chaosKey });
+  const attempt = order ? await PaymentAttempt.findOne({ idempotencyKey: String(order._id) }) : null;
+
+  // Fast-forward hold to past TTL so reaper reclaims
+  if (order) {
+    await Order.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          reservationExpiresAt: new Date(Date.now() - 5000),
+          paymentLeaseExpiresAt: new Date(Date.now() - 5000),
+        },
+      },
+    );
+  }
+
+  const sweep = await sweepExpiredReservations({ productIds: [product._id] });
+
+  // Out-of-band settlement detects expired hold and triggers refund obligation
+  let settlement = null;
+  if (order && attempt?.providerRef) {
+    settlement = await settleSuccess({
+      orderId: order._id,
+      providerRef: attempt.providerRef,
+      source: 'reconcile',
+    });
+  }
+
+  const obligations = await getRefundObligations();
+  const problems = await checkInvariants();
+
+  res.json({
+    data: {
+      faultCaught,
+      orderId: order?._id,
+      orderNumber: order?.orderNumber,
+      attemptStatus: attempt?.status,
+      unitsReleased: sweep.released,
+      settlementLostCas: settlement?.lost ?? false,
+      refundObligationRecorded: obligations.some((o) => String(o.orderId) === String(order?._id)),
+      invariantsHeld: problems.length === 0,
+      invariantProblems: problems,
     },
   });
 });

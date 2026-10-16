@@ -109,6 +109,12 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
           'Order cancelled',
           `${order.orderNumber} released its stock. Cancelling while awaiting payment implies no refund.`,
         );
+      } else if (kind === 'fulfill') {
+        await api.fulfillOrder(order.id);
+        toast.success(
+          'Order fulfilled',
+          `${order.orderNumber} has been marked fulfilled.`,
+        );
       } else {
         const { data: body } = await api.refundPayment(order.id);
         toast.success(
@@ -119,7 +125,7 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
       await Promise.all([loadList(), loadDetail(order.id), reload()]);
       setConfirm(null);
     } catch (err) {
-      toast.error(kind === 'cancel' ? 'Cancel failed' : 'Refund failed', err.message);
+      toast.error(kind === 'cancel' ? 'Cancel failed' : kind === 'fulfill' ? 'Fulfill failed' : 'Refund failed', err.message);
     } finally {
       setActionBusy(false);
     }
@@ -151,9 +157,11 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
 
   const canCancel = order?.status === 'pending_payment';
   const canReconcile = order?.status === 'pending_payment';
+  const canFulfill = order?.status === 'paid';
   const canRefund = attempts.some(
     (attempt) => attempt.status === 'succeeded' || attempt.status === 'refund_required',
   );
+
 
   return (
     <>
@@ -331,6 +339,15 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
         footer={
           order ? (
             <>
+              {canFulfill ? (
+                <Button
+                  variant="primary"
+                  onClick={() => setConfirm({ kind: 'fulfill', order })}
+                  disabled={actionBusy}
+                >
+                  Mark as fulfilled
+                </Button>
+              ) : null}
               {canReconcile ? (
                 <Button
                   variant="default"
@@ -351,14 +368,14 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
               ) : null}
               {canRefund ? (
                 <Button
-                  variant="primary"
+                  variant={canFulfill ? 'default' : 'primary'}
                   onClick={() => setConfirm({ kind: 'refund', order })}
                   disabled={actionBusy}
                 >
                   Refund
                 </Button>
               ) : null}
-              {!canCancel && !canRefund && !canReconcile ? (
+              {!canCancel && !canRefund && !canReconcile && !canFulfill ? (
                 <span className="text-subtle" style={{ fontSize: 'var(--fs-xs)' }}>
                   This order is settled — no operator action applies.
                 </span>
@@ -557,30 +574,7 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
               )}
             </div>
 
-            {order.statusHistory?.length ? (
-              <div>
-                <p className="field__label">Transition history</p>
-                <div className="steps">
-                  {order.statusHistory.map((entry, index) => (
-                    <div
-                      className={`step step--${entry.to === order.status ? 'active' : 'done'}`}
-                      key={`${entry.at}-${index}`}
-                    >
-                      <span className="step__marker" aria-hidden="true" />
-                      <span className="step__text">
-                        <span className="step__title">
-                          {entry.from === 'none' ? 'Created' : statusLabel(entry.from)} →{' '}
-                          {statusLabel(entry.to)}
-                        </span>
-                        <span className="step__detail">
-                          {entry.actor} · {entry.reason ?? '—'} · {formatDate(entry.at)}
-                        </span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <OrderTimeline order={order} attempts={attempts} claims={claims} />
           </div>
         ) : (
           <LoadingRow label="Loading the order…" />
@@ -593,16 +587,159 @@ export default function OrdersPanel({ report, reload, initialStatus = '' }) {
         onConfirm={() => runAction(confirm.kind)}
         busy={actionBusy}
         tone={confirm?.kind === 'cancel' ? 'danger' : 'primary'}
-        confirmLabel={confirm?.kind === 'cancel' ? 'Cancel the order' : 'Refund it'}
-        title={confirm?.kind === 'cancel' ? 'Cancel this order?' : 'Refund this charge?'}
+        confirmLabel={
+          confirm?.kind === 'cancel'
+            ? 'Cancel the order'
+            : confirm?.kind === 'fulfill'
+              ? 'Mark as fulfilled'
+              : 'Refund it'
+        }
+        title={
+          confirm?.kind === 'cancel'
+            ? 'Cancel this order?'
+            : confirm?.kind === 'fulfill'
+              ? 'Fulfill this order?'
+              : 'Refund this charge?'
+        }
         body={
           confirm?.kind === 'cancel'
             ? `${confirm.order.orderNumber} is awaiting payment, so cancelling releases its reserved stock without implying a refund.`
-            : `${confirm?.order?.orderNumber}: the provider is asked to refund ${formatMinor(
-                confirm?.order?.pricing.totalMinor ?? 0,
-              )}. The operation is idempotent — refunding twice reports that it was already refunded rather than paying out again.`
+            : confirm?.kind === 'fulfill'
+              ? `${confirm?.order?.orderNumber} is paid and ready for dispatch. Marking fulfilled completes its operational lifecycle.`
+              : `${confirm?.order?.orderNumber}: the provider is asked to refund ${formatMinor(
+                  confirm?.order?.pricing.totalMinor ?? 0,
+                )}. The operation is idempotent — refunding twice reports that it was already refunded rather than paying out again.`
         }
       />
     </>
   );
 }
+
+function OrderTimeline({ order, attempts = [], claims = [] }) {
+  const steps = [];
+
+  // 1. Ingestion & Idempotency
+  const primaryClaim = claims[0];
+  steps.push({
+    key: 'ingestion',
+    title: '1. Ingestion & Idempotency Check',
+    state: 'done',
+    badge: primaryClaim ? `Key: ${primaryClaim.key.slice(0, 8)}…` : 'Direct Request',
+    tone: 'neutral',
+    detail: primaryClaim
+      ? `Claim status: ${primaryClaim.status} · Attempts: ${primaryClaim.attempts} · Takeovers: ${primaryClaim.takeoverCount}`
+      : 'Order submitted directly without idempotency key',
+  });
+
+  // 2. Pricing Snapshot & Reservation (TX1)
+  const totalUnits = order.items.reduce((s, i) => s + i.quantity, 0);
+  steps.push({
+    key: 'tx1',
+    title: '2. Pricing Snapshot & Reservation (TX1)',
+    state: 'done',
+    badge: 'Stock Reserved',
+    tone: 'accent',
+    detail: `${totalUnits} units reserved across ${order.items.length} SKU(s). Hold expires at ${formatDate(order.reservationExpiresAt)}`,
+  });
+
+  // 3. Payment Lease (Mid-flight reaper guard)
+  if (order.paymentLeaseExpiresAt || attempts.length > 0) {
+    const isLeaseActive =
+      order.paymentLeaseExpiresAt && new Date(order.paymentLeaseExpiresAt) > new Date();
+    steps.push({
+      key: 'lease',
+      title: '3. Payment Lease Acquisition (ADR-08)',
+      state: isLeaseActive ? 'active' : 'done',
+      badge: isLeaseActive ? 'Lease Active' : 'Lease Released',
+      tone: isLeaseActive ? 'warning' : 'neutral',
+      detail: isLeaseActive
+        ? `Mid-flight protection held until ${formatDate(order.paymentLeaseExpiresAt)}. Reaper will not expire this order while charge is in flight.`
+        : 'Payment lease acquired and safely released upon settlement.',
+    });
+  }
+
+  // 4. Payment Gateway Attempts
+  if (attempts.length > 0) {
+    attempts.forEach((att, idx) => {
+      const isSuccess = att.status === 'succeeded';
+      const isFailed = att.status === 'declined' || att.status === 'failed';
+      steps.push({
+        key: `attempt-${att.id || idx}`,
+        title: `4.${idx + 1} Gateway Charge (${att.provider})`,
+        state: isSuccess ? 'done' : isFailed ? 'failed' : 'active',
+        badge: att.status.toUpperCase(),
+        tone: isSuccess ? 'success' : isFailed ? 'danger' : 'warning',
+        detail: `Amount: ${formatMinor(att.amountMinor)} · Ref: ${att.providerRef || 'none'} · Latency: ${att.latencyMs ?? '—'}ms ${att.providerMessage ? `· ${att.providerMessage}` : ''}`,
+      });
+    });
+  }
+
+  // 5. Status Transitions (CAS TX2 / TX3)
+  if (order.statusHistory?.length) {
+    order.statusHistory.forEach((hist, idx) => {
+      const isCurrent = hist.to === order.status;
+      const isPaid = hist.to === 'paid';
+      const isFulfilled = hist.to === 'fulfilled';
+      const isCompensated = ['payment_failed', 'expired', 'cancelled'].includes(hist.to);
+
+      steps.push({
+        key: `transition-${idx}`,
+        title: `Transition: ${hist.from === 'none' ? 'Created' : statusLabel(hist.from)} → ${statusLabel(hist.to)}`,
+        state: isCurrent ? 'active' : 'done',
+        badge: isPaid
+          ? 'Stock Committed (TX2)'
+          : isCompensated
+            ? 'Stock Released (TX3)'
+            : isFulfilled
+              ? 'Fulfilled'
+              : hist.to,
+        tone: isPaid || isFulfilled ? 'success' : isCompensated ? 'danger' : 'neutral',
+        detail: `Actor: ${hist.actor} · Reason: ${hist.reason ?? '—'} · ${formatDate(hist.at)}`,
+      });
+    });
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 'var(--sp-2)',
+        }}
+      >
+        <p className="field__label" style={{ margin: 0 }}>
+          Saga & State Audit Trail
+        </p>
+        <span className="text-subtle" style={{ fontSize: 'var(--fs-2xs)' }}>
+          Distributed Invariant Protected
+        </span>
+      </div>
+      <div className="steps">
+        {steps.map((s) => (
+          <div className={`step step--${s.state}`} key={s.key}>
+            <span className="step__marker" aria-hidden="true" />
+            <div className="step__text" style={{ width: '100%' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--sp-2)',
+                }}
+              >
+                <span className="step__title">{s.title}</span>
+                {s.badge ? <Badge tone={s.tone}>{s.badge}</Badge> : null}
+              </div>
+              <div className="step__detail" style={{ marginTop: '2px' }}>
+                {s.detail}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+

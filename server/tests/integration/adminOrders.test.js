@@ -5,8 +5,10 @@ import { Customer, IDEMPOTENCY_STATUS, PAYMENT_STATUS } from '../../src/models/i
 import {
   checkoutBody,
   checkoutRequest,
+  counters,
   createAdmin,
   createCustomer,
+  createPendingOrder,
   createProduct,
   http,
 } from '../helpers/factories.js';
@@ -270,5 +272,74 @@ describe('admin order detail', () => {
       .set('Authorization', admin.auth);
     expect(malformed.status).toBe(400);
     expect(malformed.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('fulfills a paid order, and rejects fulfilling an unpaid order', async () => {
+    const admin = await createAdmin();
+    const customer = await createCustomer();
+    const product = await createProduct({ priceMinor: 1000, onHand: 10 });
+
+    const created = await checkoutRequest({
+      auth: customer.auth,
+      key: randomUUID(),
+      body: checkoutBody({ items: [{ productId: String(product._id), quantity: 2 }] }),
+    });
+    expect(created.status).toBe(201);
+    const orderId = created.body.data.order.id;
+
+    // Fulfill the paid order
+    const fulfilled = await http()
+      .post(`/api/admin/orders/${orderId}/fulfill`)
+      .set('Authorization', admin.auth);
+    expect(fulfilled.status).toBe(200);
+    expect(fulfilled.body.data.order.status).toBe(ORDER_STATUS.FULFILLED);
+
+    // Cannot fulfill twice (terminal state)
+    const second = await http()
+      .post(`/api/admin/orders/${orderId}/fulfill`)
+      .set('Authorization', admin.auth);
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('ORDER_NOT_PAID');
+  });
+
+  it('allows a customer to cancel their own pending order, releasing inventory', async () => {
+    const customer = await createCustomer();
+    const product = await createProduct({ priceMinor: 1000, onHand: 10 });
+
+    const order = await createPendingOrder({
+      customerId: customer.id,
+      product,
+      quantity: 3,
+    });
+    expect((await counters(product._id)).reserved).toBe(3);
+
+    const cancelled = await http()
+      .post(`/api/orders/${order._id}/cancel`)
+      .set('Authorization', customer.auth);
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.data.order.status).toBe(ORDER_STATUS.CANCELLED);
+
+    // Inventory hold was released
+    const after = await counters(product._id);
+    expect(after.reserved).toBe(0);
+    expect(after.available).toBe(10);
+  });
+
+  it('forbids a customer from cancelling another customer\'s pending order', async () => {
+    const owner = await createCustomer();
+    const attacker = await createCustomer();
+    const product = await createProduct({ priceMinor: 1000, onHand: 10 });
+
+    const order = await createPendingOrder({
+      customerId: owner.id,
+      product,
+      quantity: 1,
+    });
+
+    const forbidden = await http()
+      .post(`/api/orders/${order._id}/cancel`)
+      .set('Authorization', attacker.auth);
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body.error.code).toBe('FORBIDDEN');
   });
 });

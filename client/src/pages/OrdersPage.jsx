@@ -132,7 +132,11 @@ export default function OrdersPage() {
     setActionBusy(true);
     try {
       if (confirmAction === 'cancel') {
-        await api.cancelOrder(selected.id);
+        if (isAdmin) {
+          await api.cancelOrder(selected.id);
+        } else {
+          await api.cancelMyOrder(selected.id);
+        }
         toast.success(`Order ${selected.orderNumber} cancelled`, 'Its reserved stock is back on sale.');
       } else {
         const { data: body } = await api.refundPayment(selected.id);
@@ -270,7 +274,7 @@ export default function OrdersPage() {
             <>
               <StatusPill status={selected.status} />
               <div className="card__actions">
-                {isAdmin && selected.status === 'pending_payment' ? (
+                {selected.status === 'pending_payment' ? (
                   <Button
                     variant="danger-ghost"
                     onClick={() => setConfirmAction('cancel')}

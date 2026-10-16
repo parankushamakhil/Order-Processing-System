@@ -27,6 +27,7 @@ import { StatusPill } from './shared.jsx';
 export default function RefundsPanel({ report, reload }) {
   const toast = useToast();
   const [confirm, setConfirm] = useState(null);
+  const [restockStock, setRestockStock] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const obligations = report.refundObligations ?? [];
@@ -36,13 +37,14 @@ export default function RefundsPanel({ report, reload }) {
     const obligation = confirm;
     setBusy(true);
     try {
-      const { data: body } = await api.refundPayment(obligation.orderId);
+      const { data: body } = await api.refundPayment(obligation.orderId, { restock: restockStock });
       toast.success(
         body.refund?.alreadyRefunded ? 'Already refunded' : 'Refund recorded',
-        `${obligation.orderNumber ?? obligation.orderId} — ${formatMinor(obligation.amountMinor)}.`,
+        `${obligation.orderNumber ?? obligation.orderId} — ${formatMinor(obligation.amountMinor)}${body.restocked ? ' (items restocked to inventory)' : ''}.`,
       );
       await reload();
       setConfirm(null);
+      setRestockStock(false);
     } catch (err) {
       toast.error('Refund failed', err.message);
     } finally {
@@ -153,9 +155,32 @@ export default function RefundsPanel({ report, reload }) {
         tone="primary"
         confirmLabel="Issue the refund"
         title="Refund this charge?"
-        body={`${confirm?.orderNumber ?? ''} — ${formatMinor(confirm?.amountMinor ?? 0)} ${
-          confirm?.providerRef ? `(provider ref ${confirm.providerRef})` : ''
-        }. The call is idempotent, so repeating it cannot pay out twice.`}
+        body={
+          <div>
+            <p>
+              {confirm?.orderNumber ?? ''} — {formatMinor(confirm?.amountMinor ?? 0)}{' '}
+              {confirm?.providerRef ? `(provider ref ${confirm.providerRef})` : ''}. The call is
+              idempotent, so repeating it cannot pay out twice.
+            </p>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 12,
+                cursor: 'pointer',
+                fontSize: 'var(--fs-sm)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={restockStock}
+                onChange={(e) => setRestockStock(e.target.checked)}
+              />
+              <span>Restock order item(s) back to available inventory</span>
+            </label>
+          </div>
+        }
       />
     </>
   );

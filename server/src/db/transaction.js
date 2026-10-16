@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { metrics } from '../lib/metrics.js';
 
 /**
  * The ONE place a session is opened or ended (ADR-04).
@@ -20,12 +21,22 @@ import mongoose from 'mongoose';
  */
 export async function withTransaction(fn, options = {}) {
   const session = await mongoose.startSession();
+  let tries = 0;
   try {
-    return await session.withTransaction(fn, {
-      readConcern: { level: 'snapshot' },
-      writeConcern: { w: 'majority' },
-      ...options,
-    });
+    return await session.withTransaction(
+      async (s) => {
+        tries += 1;
+        if (tries > 1) {
+          metrics.inc('transaction_retries_total');
+        }
+        return fn(s);
+      },
+      {
+        readConcern: { level: 'snapshot' },
+        writeConcern: { w: 'majority' },
+        ...options,
+      },
+    );
   } finally {
     await session.endSession();
   }

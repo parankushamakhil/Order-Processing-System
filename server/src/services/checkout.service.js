@@ -14,6 +14,7 @@ import {
   ProductNotFoundError,
 } from '../errors/index.js';
 import { logger } from '../lib/logger.js';
+import { metrics } from '../lib/metrics.js';
 import {
   IdempotencyKey,
   IDEMPOTENCY_STATUS,
@@ -33,6 +34,7 @@ import {
 } from './idempotency.service.js';
 import { settleFailure, settleSuccess } from './paymentSettlement.service.js';
 import { GatewayTimeoutError, getGateway } from './payments/index.js';
+import { chaos } from './chaos.service.js';
 
 /**
  * POST /api/checkout — the saga.
@@ -48,7 +50,11 @@ import { GatewayTimeoutError, getGateway } from './payments/index.js';
  *
  * @returns {{ statusCode: number, body: object, replayed: boolean }}
  */
-export async function checkout({ customerId, idempotencyKey, input }) {
+export async function checkout({ customerId, idempotencyKey, input, chaosFault = null }) {
+  if (chaosFault) chaos.setFault(chaosFault);
+  metrics.inc('checkout_attempts_total');
+  const startTime = Date.now();
+
   const items = canonicalizeItems(input.items);
   const requestHash = buildRequestHash({
     customerId,
@@ -64,10 +70,16 @@ export async function checkout({ customerId, idempotencyKey, input }) {
   });
 
   // Same key, different intent: refuse rather than return someone else's order.
-  if (claim.kind === 'conflict') throw new IdempotencyKeyReuseError();
+  if (claim.kind === 'conflict') {
+    metrics.inc('checkout_rejections_total', { reason: 'other' });
+    throw new IdempotencyKeyReuseError();
+  }
 
   // Same key, already settled: replay without re-executing anything.
-  if (claim.kind === 'replay') return replay(claim.doc);
+  if (claim.kind === 'replay') {
+    metrics.inc('idempotency_replays_total');
+    return replay(claim.doc);
+  }
 
   // A concurrent duplicate holds the key. Wait briefly for it to finish so
   // double-clicks coalesce onto the winner's response.
@@ -77,7 +89,11 @@ export async function checkout({ customerId, idempotencyKey, input }) {
     // (Gating this on `orderId` made every early duplicate fail with a 409 even
     // though the winner was about to succeed — caught by the 50-way test.)
     const settled = await waitForTerminal(claim.doc._id, config.IDEMPOTENCY_WAIT_MS);
-    if (settled) return replay(settled);
+    if (settled) {
+      metrics.inc('idempotency_replays_total');
+      return replay(settled);
+    }
+    metrics.inc('checkout_rejections_total', { reason: 'checkout_in_progress' });
     throw new CheckoutInProgressError(
       Math.max(1, new Date(claim.doc.leaseExpiresAt).getTime() - Date.now()),
     );
@@ -90,7 +106,11 @@ export async function checkout({ customerId, idempotencyKey, input }) {
     if (!taken) {
       // Another contender won the takeover. Wait for its result.
       const settled = await waitForTerminal(record._id, config.IDEMPOTENCY_WAIT_MS);
-      if (settled) return replay(settled);
+      if (settled) {
+        metrics.inc('idempotency_replays_total');
+        return replay(settled);
+      }
+      metrics.inc('checkout_rejections_total', { reason: 'checkout_in_progress' });
       throw new CheckoutInProgressError(config.IDEMPOTENCY_WAIT_MS);
     }
     record = taken;
@@ -98,10 +118,24 @@ export async function checkout({ customerId, idempotencyKey, input }) {
 
   try {
     const result = await runCheckout({ customerId, items, input, record, idempotencyKey });
+    metrics.inc('checkout_success_total');
+    metrics.observeDuration(Date.now() - startTime);
     return { ...result, replayed: false };
   } catch (err) {
+    metrics.observeDuration(Date.now() - startTime);
+    if (err instanceof InsufficientStockError) {
+      metrics.inc('checkout_rejections_total', { reason: 'out_of_stock' });
+    } else if (err instanceof PriceChangedError) {
+      metrics.inc('checkout_rejections_total', { reason: 'price_changed' });
+    } else if (err instanceof CheckoutInProgressError) {
+      metrics.inc('checkout_rejections_total', { reason: 'checkout_in_progress' });
+    } else {
+      metrics.inc('checkout_rejections_total', { reason: 'other' });
+    }
     await finalizeFailure(record._id, err);
     throw err;
+  } finally {
+    if (chaosFault) chaos.clear();
   }
 }
 
@@ -272,7 +306,7 @@ async function createOrderWithReservation({ customerId, pricedLines, pricing, re
               orderNumber,
               customerId,
               status: ORDER_STATUS.PENDING_PAYMENT,
-              currency: 'USD',
+              currency: 'INR',
               items: pricedLines.map((line) => ({
                 productId: line.productId,
                 sku: line.sku,
@@ -413,6 +447,8 @@ async function chargeAndSettle({ order, record, paymentMethod }) {
     { upsert: true, returnDocument: 'after' },
   );
 
+  chaos.check('crash_before_charge');
+
   let outcome;
   try {
     outcome = await gateway.charge({
@@ -455,6 +491,7 @@ async function chargeAndSettle({ order, record, paymentMethod }) {
   );
 
   if (outcome.status === 'succeeded') {
+    chaos.check('crash_after_charge');
     return settleSuccess({ orderId, providerRef: outcome.providerRef, source: 'gateway' });
   }
   return settleFailure({ orderId, outcome, source: 'gateway' });
