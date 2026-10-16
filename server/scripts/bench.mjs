@@ -49,6 +49,7 @@ async function resetWorld(sku, stock) {
   const benchOrderIds = benchOrders.map((o) => o._id);
 
   await Promise.all([
+    Product.deleteMany({ sku: /^BENCH-/ }),
     Order.deleteMany({ customerId: { $in: benchCustomerIds } }),
     PaymentAttempt.deleteMany({ orderId: { $in: benchOrderIds } }),
     IdempotencyKey.deleteMany({
@@ -286,7 +287,24 @@ async function main() {
       'and will disagree with each other; only the paired means are a conclusion.\n\n',
   );
 
-  await disconnectDb();
+  try {
+    // results summary printed above
+  } finally {
+    const benchCustomers = await Customer.find({ email: /@bench\.local$/ }).select('_id');
+    const benchCustomerIds = benchCustomers.map((c) => c._id);
+    const benchOrders = await Order.find({ customerId: { $in: benchCustomerIds } }).select('_id');
+    const benchOrderIds = benchOrders.map((o) => o._id);
+    await Promise.all([
+      Product.deleteMany({ sku: /^BENCH-/ }),
+      Order.deleteMany({ customerId: { $in: benchCustomerIds } }),
+      PaymentAttempt.deleteMany({ orderId: { $in: benchOrderIds } }),
+      IdempotencyKey.deleteMany({
+        $or: [{ orderId: { $in: benchOrderIds } }, { key: /^bench-/ }],
+      }),
+      Customer.deleteMany({ email: /@bench\.local$/ }),
+    ]);
+    await disconnectDb();
+  }
   process.exit(results.every((r) => r.consistent) ? 0 : 1);
 }
 

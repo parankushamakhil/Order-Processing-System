@@ -18,7 +18,8 @@
     "test:concurrency": "vitest run tests/concurrency --reporter=verbose --no-file-parallelism",
     "test:unit": "vitest run tests/unit tests/property",
     "bench": "node scripts/bench.mjs",
-    "demo:judge": "node scripts/judge-run.mjs"
+    "demo:judge": "node scripts/judge-run.mjs",
+    "verify:db": "node scripts/verify-db.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

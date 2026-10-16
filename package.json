@@ -24,6 +24,7 @@
     "test:concurrency": "npm run test:concurrency --workspace server",
     "bench": "npm run bench --workspace server",
     "demo:judge": "npm run demo:judge --workspace server",
+    "verify:db": "npm run verify:db --workspace server",
     "verify": "npm run test --workspace server && npm run build --workspace client"
   },
   "devDependencies": {

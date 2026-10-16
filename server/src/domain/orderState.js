@@ -1,6 +1,6 @@
 import { IllegalTransitionError } from '../errors/index.js';
 import { Order } from '../models/Order.js';
-import { canTransition } from './orderStatus.js';
+import { TERMINAL_STATUSES, canTransition } from './orderStatus.js';
 
 /**
  * The ONE chokepoint for order status changes.
@@ -41,5 +41,5 @@ export async function transition(orderId, from, to, patch = {}, session = null) 
  * duplicated webhook discovers that the order was already settled elsewhere.
  */
 export function isSettled(order) {
-  return Boolean(order) && !canTransition(order.status, order.status);
+  return Boolean(order) && TERMINAL_STATUSES.includes(order.status);
 }
