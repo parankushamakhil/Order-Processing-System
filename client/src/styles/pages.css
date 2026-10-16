@@ -1058,6 +1058,12 @@
   text-align: left;
 }
 
+.search-trigger__kbd {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
 @media (max-width: 1080px) {
   .search-trigger {
     min-width: 0;
@@ -1087,12 +1093,6 @@
 /* --- Shell additions ----------------------------------------------------- */
 .topbar__head {
   min-width: 0;
-}
-
-.search-trigger__kbd {
-  display: inline-flex;
-  gap: 3px;
-  flex: none;
 }
 
 /* The account card is a menu trigger, not a static footer: it keeps the card's
