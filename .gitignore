@@ -89,6 +89,9 @@ $RECYCLE.BIN/
 .cursor/
 scratch/
 
-# ---- internal design and architecture docs --------------------------------
+# ---- documentation and internal reports (excluded from submission) -------
+docs/
+differentiation_implementation_plan.md
 ARCHITECTURE.md
 IMPLEMENTATION_PLAN.md
+
