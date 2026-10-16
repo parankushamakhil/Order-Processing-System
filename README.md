@@ -49,7 +49,10 @@ npm test
 # 5. Run headless judge verification script
 npm run demo:judge
 
-# 6. Launch development server (API :4000 + Vite SPA :5173)
+# 6. Run live database audit (topology, validators, invariants, currency)
+npm run verify:db
+
+# 7. Launch development server (API :4000 + Vite SPA :5173)
 npm run dev
 ```
 
@@ -65,7 +68,7 @@ NODE_ENV=production npm start          # http://localhost:4000 serves both API a
 
 ## Complete Evaluator Demonstration Walkthrough
 
-Follow this 5-step walkthrough to inspect every critical feature of the system:
+Follow this walkthrough to inspect every critical feature of the system:
 
 ### Step 1: Real-Time Storefront & Catalogue Stock Awareness
 1. Navigate to the storefront (`/`) as a shopper or guest.
@@ -77,6 +80,11 @@ Follow this 5-step walkthrough to inspect every critical feature of the system:
 2. The pricing engine calculates subtotal, discounts, tax (basis points), and shipping on the server.
 3. If an administrator alters a product price while the cart is active, the checkout refuses with `PRICE_CHANGED` rather than silently billing a stale amount.
 4. Retry or double-click checkout: the client detects the identical cart fingerprint and reuses the idempotency key; the server answers with `Idempotency-Replayed: true` and the original order, avoiding duplicate billing.
+
+### Step 2b: Customer Self-Service Order Cancellation
+1. As a shopper, navigate to **Orders** (`/orders`).
+2. Open any order in `pending_payment` status and click **Cancel order** in the drawer footer.
+3. Confirm the cancellation: the server executes an atomic multi-document transaction transitioning status to `cancelled`, immediately releases the reserved stock back to `available` inventory, and marks the idempotency key as failed so the shopper can check out again cleanly.
 
 ### Step 3: Concurrency Lab — Proving Zero Overselling Under Contention
 1. Sign in as Administrator (`admin@shop.test` / `password1234`) and navigate to **Operations → Concurrency Lab**.

@@ -55,6 +55,7 @@ EVALUATOR QUICK START
    npm run seed:demo    # seed 205 products, 620 orders, 487 payment records
    npm test             # run all 190 tests across 19 suites
    npm run demo:judge   # execute autonomous headless evaluation harness
+   npm run verify:db    # run live database audit (invariants, BSON validators, currency)
    npm run dev          # launch development mode (API :4000 + Vite SPA :5173)
 
 3. Run in Production Mode (Single-Origin Process):
@@ -78,6 +79,12 @@ Step 2: Idempotent Cart Checkout & Price Drift Protection
   PRICE_CHANGED rather than silently billing a stale total.
 - Double-clicking or refreshing during checkout reuses the idempotency key; the
   server answers with Idempotency-Replayed: true, preventing duplicate charges.
+
+Step 2b: Customer Self-Service Order Cancellation
+- As shopper, navigate to Orders (/orders) and open any pending_payment order.
+- Click "Cancel order" in the drawer: server runs an atomic multi-document
+  transaction transitioning to cancelled, releases held stock back to inventory,
+  and marks the idempotency key as failed so the shopper can check out again.
 
 Step 3: Concurrency Lab (Proving Zero Overselling Under Contention)
 - Sign in as Admin (admin@shop.test / password1234) -> Operations -> Concurrency Lab.
