@@ -250,7 +250,7 @@ export default function CartPage({ onBrowse }) {
                     <option value="">None</option>
                     <option value="SAVE10">SAVE10 — 10% off</option>
                     <option value="SAVE25">SAVE25 — 25% off</option>
-                    <option value="FLAT5">FLAT5 — $5.00 off</option>
+                    <option value="FLAT5">FLAT5 — ₹5.00 off</option>
                   </SelectField>
                 </div>
 

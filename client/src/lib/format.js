@@ -1,9 +1,10 @@
 /** Money is stored and transferred as integer minor units; format only here. */
-export function formatMinor(minor, currency = 'USD') {
+export function formatMinor(minor, currency = 'INR') {
   if (minor == null) return '—';
   const sign = minor < 0 ? '-' : '';
   const abs = Math.abs(minor);
-  return `${sign}${currency === 'USD' ? '$' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+  const symbol = currency === 'INR' || currency === 'USD' ? '₹' : `${currency} `;
+  return `${sign}${symbol}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
 export function formatDate(value) {

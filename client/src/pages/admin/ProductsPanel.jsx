@@ -409,7 +409,7 @@ export default function ProductsPanel({ report, reload }) {
                 onChange={(event) => setForm({ ...form, description: event.target.value })}
               />
               <TextField
-                label="Price (USD)"
+                label="Price (INR)"
                 type="number"
                 step="0.01"
                 min="0"
