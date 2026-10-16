@@ -81,11 +81,15 @@ export function errorHandler(err, req, res, next) {
 
   // $jsonSchema rejection — the storage-layer backstop firing (ADR-02).
   if (err?.code === 121 || /Document failed validation/.test(err?.message ?? '')) {
-    req.log?.error('collection validator rejected a write', { message: err.message });
+    req.log?.error('collection validator rejected a write', {
+      message: err.message,
+      errInfo: err.errInfo,
+    });
     return res.status(500).json({
       error: {
         code: 'INVARIANT_VIOLATION',
         message: 'The write was rejected by a database invariant',
+        details: err.errInfo?.details ?? null,
         retryable: false,
         requestId,
       },
